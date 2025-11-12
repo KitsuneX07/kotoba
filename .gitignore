@@ -27,3 +27,5 @@ target
 
 *.md
 !README.md
+
+.env

@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use futures_core::Stream;
 
 use crate::error::LLMError;
 
@@ -54,12 +56,27 @@ impl HttpResponse {
     }
 }
 
+/// HTTP 流式响应
+pub struct HttpStreamResponse {
+    pub status: u16,
+    pub headers: HashMap<String, String>,
+    pub body: HttpBodyStream,
+}
+
+/// 流式响应体
+pub type HttpBodyStream = Pin<Box<dyn Stream<Item = Result<Vec<u8>, LLMError>> + Send>>;
+
 /// 抽象的 HTTP 传输层 便于在测试中注入 Mock
 #[async_trait]
 pub trait HttpTransport: Send + Sync {
     /// 发送请求并返回响应
     async fn send(&self, request: HttpRequest) -> Result<HttpResponse, LLMError>;
+
+    /// 以流式方式发送请求并持续接收响应体
+    async fn send_stream(&self, request: HttpRequest) -> Result<HttpStreamResponse, LLMError>;
 }
 
 /// 线程安全别名
 pub type DynHttpTransport = Arc<dyn HttpTransport>;
+
+pub mod reqwest;

@@ -6,6 +6,12 @@ edition = "2024"
 [dependencies]
 async-trait = "0.1"
 futures-core = "0.3"
+futures-util = "0.3"
+reqwest = { version = "0.12", features = ["json", "stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[dev-dependencies]
+dotenvy = "0.15"
