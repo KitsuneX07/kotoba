@@ -1,14 +1,13 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! LLM 多后端统一调用库
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod client;
+pub mod config;
+pub mod error;
+pub mod http;
+pub mod provider;
+pub mod types;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use client::LLMClient;
+pub use error::LLMError;
+pub use provider::{ChatStream, LLMProvider};
+pub use types::*;
