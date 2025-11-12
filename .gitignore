@@ -29,3 +29,4 @@ target
 !README.md
 
 .env
+.DS_Store
