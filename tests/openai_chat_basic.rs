@@ -1,7 +1,10 @@
 use std::env;
+use std::fs;
 use std::sync::Arc;
 
+use base64::{engine::general_purpose, Engine as _};
 use dotenvy::dotenv;
+use futures_util::StreamExt;
 use kotoba::http::reqwest::ReqwestTransport;
 use kotoba::provider::openai_chat::OpenAiChatProvider;
 use kotoba::types::{
@@ -75,18 +78,23 @@ async fn openai_chat_basic_image_understanding_dialog_live() {
     options.model = Some(model.clone());
     options.max_output_tokens = Some(300);
 
+    // 读取本地测试图片并编码为 base64，走 data URL 通道
+    let image_bytes = fs::read("tests/assets/Gfp-wisconsin-madison-the-nature-boardwalk.jpg")
+        .expect("test image should be readable");
+    let image_b64 = general_purpose::STANDARD.encode(&image_bytes);
+
     let request = ChatRequest {
         messages: vec![Message {
             role: Role::user(),
             name: None,
             content: vec![
                 ContentPart::Text(TextContent {
-                    text: "这张图片里有什么？"
-                        .to_string(),
+                    text: "这张图片里有什么？".to_string(),
                 }),
                 ContentPart::Image(ImageContent {
-                    source: ImageSource::Url {
-                        url: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg".to_string(),
+                    source: ImageSource::Base64 {
+                        data: image_b64,
+                        mime_type: Some("image/jpeg".to_string()),
                     },
                     detail: None,
                     metadata: None,
@@ -104,8 +112,8 @@ async fn openai_chat_basic_image_understanding_dialog_live() {
     let response = provider.chat(request).await.expect("图像理解请求应成功");
     let text = first_text_output(&response).expect("助手应描述图像内容");
     assert!(
-        text.contains("路"),
-        "回答需包含“路”方便匹配，实际为：{text}"
+        text.contains("草"),
+        "回答需包含“草”方便匹配，实际为：{text}"
     );
     assert!(
         matches!(response.finish_reason, Some(FinishReason::Stop)),
@@ -180,6 +188,72 @@ async fn openai_chat_basic_tool_call_dialog_live() {
         location.contains("Boston"),
         "工具参数应包含 Boston, MA，实际为：{location}"
     );
+}
+
+fn build_stream_request(model: &str) -> ChatRequest {
+    let mut options = ChatOptions::default();
+    options.model = Some(model.to_string());
+
+    ChatRequest {
+        messages: vec![
+            Message {
+                role: Role::system(),
+                name: None,
+                content: vec![ContentPart::Text(TextContent {
+                    text: "You are a helpful assistant.".to_string(),
+                })],
+                metadata: None,
+            },
+            Message {
+                role: Role::user(),
+                name: None,
+                content: vec![ContentPart::Text(TextContent {
+                    text: "Please introduce Rust language in one sentence.".to_string(),
+                })],
+                metadata: None,
+            },
+        ],
+        options,
+        tools: Vec::new(),
+        tool_choice: None,
+        response_format: None,
+        metadata: None,
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires valid OpenAI-compatible endpoint"]
+async fn openai_chat_live_sync_and_stream() {
+    dotenv().ok();
+    let Some((provider, model)) = build_provider_from_env() else {
+        return;
+    };
+
+    let request = build_stream_request(&model);
+    let response = provider
+        .chat(request.clone())
+        .await
+        .expect("chat request should succeed");
+    assert!(
+        !response.outputs.is_empty(),
+        "chat response should contain outputs"
+    );
+
+    let mut stream = provider
+        .stream_chat(request)
+        .await
+        .expect("streaming chat should start");
+    let mut saw_chunk = false;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.expect("stream chunk should be valid");
+        if chunk.is_terminal {
+            break;
+        }
+        if !chunk.events.is_empty() {
+            saw_chunk = true;
+        }
+    }
+    assert!(saw_chunk, "stream should yield at least one data chunk");
 }
 
 fn build_provider_from_env() -> Option<(OpenAiChatProvider, String)> {

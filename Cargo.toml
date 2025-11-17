@@ -15,3 +15,4 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [dev-dependencies]
 dotenvy = "0.15"
+base64 = "0.22"
