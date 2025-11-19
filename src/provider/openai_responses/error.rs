@@ -67,7 +67,10 @@ mod tests {
         let body = r#"{"error":{"message":"rate limited","type":"rate_limit_error","code":"rate_limit_exceeded"}}"#;
         let err = parse_openai_responses_error(429, body);
         match err {
-            LLMError::RateLimit { message, retry_after } => {
+            LLMError::RateLimit {
+                message,
+                retry_after,
+            } => {
                 assert!(message.contains("rate limited"));
                 assert!(message.contains("rate_limit_exceeded"));
                 assert!(retry_after.is_none());
@@ -88,7 +91,8 @@ mod tests {
             other => panic!("expected Validation error, got {other:?}"),
         }
 
-        let body = r#"{"error":{"message":"not found","type":"invalid_request_error","code":null}}"#;
+        let body =
+            r#"{"error":{"message":"not found","type":"invalid_request_error","code":null}}"#;
         let err = parse_openai_responses_error(404, body);
         match err {
             LLMError::Provider { provider, message } => {
@@ -110,4 +114,3 @@ mod tests {
         }
     }
 }
-

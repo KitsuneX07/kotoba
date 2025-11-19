@@ -9,9 +9,7 @@ use serde_json::json;
 use crate::error::LLMError;
 use crate::http::HttpBodyStream;
 use crate::provider::ChatStream;
-use crate::types::{
-    ChatChunk, ChatEvent, ContentDelta, MessageDelta, ProviderMetadata, Role,
-};
+use crate::types::{ChatChunk, ChatEvent, ContentDelta, MessageDelta, ProviderMetadata, Role};
 
 use super::response::convert_usage;
 use super::types::OpenAiResponsesStreamEvent;
@@ -258,8 +256,8 @@ fn convert_stream_event(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ChatEvent;
     use crate::provider::openai_responses::types::{OpenAiResponsesResponse, OpenAiResponsesUsage};
+    use crate::types::ChatEvent;
 
     #[test]
     fn convert_output_text_delta_event() {
@@ -274,8 +272,8 @@ mod tests {
             part: None,
         };
 
-        let chunk =
-            convert_stream_event(event, "openai_responses", "endpoint").expect("convert should succeed");
+        let chunk = convert_stream_event(event, "openai_responses", "endpoint")
+            .expect("convert should succeed");
         let chunk = chunk.expect("chunk should be Some");
         assert!(!chunk.is_terminal);
         assert_eq!(chunk.provider.provider, "openai_responses");
@@ -339,8 +337,8 @@ mod tests {
             part: None,
         };
 
-        let chunk =
-            convert_stream_event(event, "openai_responses", "endpoint").expect("convert should succeed");
+        let chunk = convert_stream_event(event, "openai_responses", "endpoint")
+            .expect("convert should succeed");
         let chunk = chunk.expect("chunk should be Some");
         assert!(chunk.is_terminal);
         assert!(chunk.events.is_empty());

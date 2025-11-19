@@ -5,4 +5,4 @@ mod response;
 mod stream;
 mod types;
 
-pub use provider::OpenAiResponsesProvider;
+pub use provider::GoogleGeminiProvider;

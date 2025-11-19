@@ -100,9 +100,7 @@ fn convert_message_output(item: &Value) -> Result<Message, LLMError> {
                     }
                     _ => {
                         // 对于 refusal / file_citation / url_citation 等，先整体透传为 Data
-                        content_parts.push(ContentPart::Data {
-                            data: part.clone(),
-                        });
+                        content_parts.push(ContentPart::Data { data: part.clone() });
                     }
                 }
             }
@@ -357,10 +355,7 @@ mod tests {
                     assert_eq!(*index, 0);
                     assert_eq!(call.id.as_deref(), Some("call_1"));
                     assert_eq!(call.name, "get_current_weather");
-                    assert_eq!(
-                        call.arguments["location"],
-                        json!("Boston, MA")
-                    );
+                    assert_eq!(call.arguments["location"], json!("Boston, MA"));
                     assert_eq!(call.kind, ToolCallKind::Function);
                 }
                 OutputItem::ToolResult { result, index } => {

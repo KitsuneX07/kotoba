@@ -2,7 +2,7 @@ use std::env;
 use std::fs;
 use std::sync::Arc;
 
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use dotenvy::dotenv;
 use futures_util::StreamExt;
 use kotoba::http::reqwest::ReqwestTransport;

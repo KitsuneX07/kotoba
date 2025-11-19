@@ -84,4 +84,3 @@ pub(crate) struct OpenAiResponsesStreamEvent {
     #[serde(default)]
     pub(crate) part: Option<Value>,
 }
-

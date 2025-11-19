@@ -3,8 +3,8 @@ use serde_json::{Map, Value, json};
 use crate::error::LLMError;
 use crate::types::{
     AudioContent, ChatRequest, ContentPart, FileContent, ImageContent, ImageDetail, ImageSource,
-    MediaSource, Message, ReasoningEffort, ResponseFormat, TextContent, ToolChoice,
-    ToolDefinition, ToolKind, VideoContent,
+    MediaSource, Message, ReasoningEffort, ResponseFormat, TextContent, ToolChoice, ToolDefinition,
+    ToolKind, VideoContent,
 };
 
 /// 构建 OpenAI Responses 请求体
@@ -228,7 +228,10 @@ fn convert_tools(tools: &[ToolDefinition]) -> Result<Vec<Value>, LLMError> {
                 obj.insert("type".to_string(), Value::String("function".to_string()));
                 obj.insert("name".to_string(), Value::String(tool.name.clone()));
                 if let Some(description) = &tool.description {
-                    obj.insert("description".to_string(), Value::String(description.clone()));
+                    obj.insert(
+                        "description".to_string(),
+                        Value::String(description.clone()),
+                    );
                 }
                 if let Some(schema) = &tool.input_schema {
                     obj.insert("parameters".to_string(), schema.clone());
@@ -328,8 +331,8 @@ fn format_image_detail(detail: &ImageDetail) -> &'static str {
 mod tests {
     use super::*;
     use crate::types::{
-        ChatOptions, ChatRequest, ContentPart, ImageContent, ImageDetail, ImageSource,
-        Message, ReasoningOptions, Role,
+        ChatOptions, ChatRequest, ContentPart, ImageContent, ImageDetail, ImageSource, Message,
+        ReasoningOptions, Role,
     };
 
     /// 仅包含 user 文本消息的最简请求体
@@ -364,10 +367,7 @@ mod tests {
         assert_eq!(msg["role"], json!("user"));
         let content = msg["content"].as_array().expect("content should be array");
         assert_eq!(content.len(), 1);
-        assert_eq!(
-            content[0],
-            json!({ "type": "input_text", "text": "hello" })
-        );
+        assert_eq!(content[0], json!({ "type": "input_text", "text": "hello" }));
     }
 
     /// system / developer 折叠为 instructions，其余作为 input
@@ -438,7 +438,9 @@ mod tests {
         assert_eq!(body["service_tier"], json!("default"));
 
         // reasoning
-        let reasoning = body["reasoning"].as_object().expect("reasoning should be object");
+        let reasoning = body["reasoning"]
+            .as_object()
+            .expect("reasoning should be object");
         assert_eq!(reasoning["effort"], json!("high"));
         assert_eq!(reasoning["reasoning_custom"], json!("custom"));
 

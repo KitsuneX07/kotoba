@@ -182,9 +182,7 @@ mod tests {
                 index: 0,
                 message: Some(OpenAiResponseMessage {
                     role: Some("assistant".to_string()),
-                    content: Some(OpenAiMessageContent::Text(
-                        "hello world".to_string(),
-                    )),
+                    content: Some(OpenAiMessageContent::Text("hello world".to_string())),
                     name: None,
                     tool_calls: None,
                 }),
@@ -204,9 +202,12 @@ mod tests {
     #[test]
     fn map_response_text_only() {
         let resp = sample_response_text();
-        let mapped =
-            map_response(resp, "openai_chat", "https://api.openai.com/v1/chat/completions".into())
-                .expect("map_response should succeed");
+        let mapped = map_response(
+            resp,
+            "openai_chat",
+            "https://api.openai.com/v1/chat/completions".into(),
+        )
+        .expect("map_response should succeed");
 
         assert_eq!(mapped.model.as_deref(), Some("gpt-4.1"));
         assert!(matches!(mapped.finish_reason, Some(FinishReason::Stop)));
@@ -256,14 +257,12 @@ mod tests {
                 index: 0,
                 message: Some(OpenAiResponseMessage {
                     role: Some("assistant".to_string()),
-                    content: Some(OpenAiMessageContent::Parts(vec![
-                        OpenAiMessagePart {
-                            kind: "text".to_string(),
-                            text: Some("".to_string()),
-                            image_url: None,
-                            extra: Default::default(),
-                        },
-                    ])),
+                    content: Some(OpenAiMessageContent::Parts(vec![OpenAiMessagePart {
+                        kind: "text".to_string(),
+                        text: Some("".to_string()),
+                        image_url: None,
+                        extra: Default::default(),
+                    }])),
                     name: None,
                     tool_calls: Some(vec![OpenAiToolCallResponse {
                         id: Some("call_1".to_string()),
@@ -299,10 +298,7 @@ mod tests {
                     assert_eq!(call.id.as_deref(), Some("call_1"));
                     assert_eq!(call.name, "get_weather");
                     // 参数解析为 JSON 对象
-                    assert_eq!(
-                        call.arguments["location"],
-                        json!("Boston, MA")
-                    );
+                    assert_eq!(call.arguments["location"], json!("Boston, MA"));
                     assert_eq!(call.kind, ToolCallKind::Function);
                 }
                 _ => {}
@@ -375,10 +371,7 @@ mod tests {
 
     #[test]
     fn convert_finish_reason_and_usage() {
-        assert!(matches!(
-            convert_finish_reason("stop"),
-            FinishReason::Stop
-        ));
+        assert!(matches!(convert_finish_reason("stop"), FinishReason::Stop));
         assert!(matches!(
             convert_finish_reason("length"),
             FinishReason::Length

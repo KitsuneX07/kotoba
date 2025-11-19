@@ -14,16 +14,18 @@ use crate::types::{
 };
 
 use super::response::{convert_finish_reason, convert_usage};
-use super::types::{OpenAiDeltaContent, OpenAiMessagePart, OpenAiStreamChunk, OpenAiToolCallDelta};
+use super::types::GeminiGenerateContentResponse;
 
+/// 将 HTTP 流包装为 ChatStream
 pub(crate) fn create_stream(
     body: HttpBodyStream,
     provider: &'static str,
     endpoint: String,
 ) -> ChatStream {
-    Box::pin(OpenAiSseStream::new(body, provider, endpoint))
+    Box::pin(GeminiSseStream::new(body, provider, endpoint))
 }
 
+/// 在出错时收集整个流的文本，方便构造错误信息
 pub(crate) async fn collect_stream_text(
     mut body: HttpBodyStream,
     provider: &'static str,
@@ -38,7 +40,7 @@ pub(crate) async fn collect_stream_text(
     })
 }
 
-struct OpenAiSseStream {
+struct GeminiSseStream {
     body: HttpBodyStream,
     buffer: Vec<u8>,
     data_lines: Vec<Vec<u8>>,
@@ -49,7 +51,7 @@ struct OpenAiSseStream {
     done_received: bool,
 }
 
-impl OpenAiSseStream {
+impl GeminiSseStream {
     fn new(body: HttpBodyStream, provider: &'static str, endpoint: String) -> Self {
         Self {
             body,
@@ -108,7 +110,7 @@ impl OpenAiSseStream {
             };
             self.pending.push_back(Ok(chunk));
         } else {
-            let chunk: OpenAiStreamChunk =
+            let chunk: GeminiGenerateContentResponse =
                 serde_json::from_str(&data).map_err(|err| LLMError::Provider {
                     provider: self.provider,
                     message: format!("failed to parse stream chunk: {err}"),
@@ -120,7 +122,7 @@ impl OpenAiSseStream {
     }
 }
 
-impl Stream for OpenAiSseStream {
+impl Stream for GeminiSseStream {
     type Item = Result<ChatChunk, LLMError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -195,51 +197,78 @@ fn find_newline(buffer: &[u8]) -> Option<usize> {
 }
 
 fn convert_stream_chunk(
-    chunk: OpenAiStreamChunk,
+    chunk: GeminiGenerateContentResponse,
     provider: &'static str,
     endpoint: &str,
 ) -> Result<ChatChunk, LLMError> {
+    use crate::types::Role;
+
     let mut events = Vec::new();
-    for choice in &chunk.choices {
-        if let Some(delta) = &choice.delta {
-            if delta.role.is_some() || delta.content.is_some() || choice.finish_reason.is_some() {
-                let content_updates = match &delta.content {
-                    Some(OpenAiDeltaContent::Parts(parts)) => convert_content_delta(parts)?,
-                    Some(OpenAiDeltaContent::Text(text)) => {
-                        if text.is_empty() {
-                            Vec::new()
-                        } else {
-                            vec![ContentDelta::Text { text: text.clone() }]
-                        }
-                    }
-                    None => Vec::new(),
-                };
-                let message_delta = MessageDelta {
-                    index: choice.index,
-                    role: delta.role.clone().map(crate::types::Role),
-                    content: content_updates,
-                    finish_reason: choice.finish_reason.as_deref().map(convert_finish_reason),
-                };
-                if message_delta.role.is_some()
-                    || !message_delta.content.is_empty()
-                    || message_delta.finish_reason.is_some()
-                {
-                    events.push(ChatEvent::MessageDelta(message_delta));
-                }
-            }
-            if let Some(tool_calls) = &delta.tool_calls {
-                for tool_call in tool_calls {
-                    let delta = convert_tool_call_delta_event(
-                        tool_call,
-                        choice.index,
-                        choice.finish_reason.as_deref(),
-                    )?;
+
+    for (default_index, candidate) in chunk.candidates.iter().enumerate() {
+        let index = candidate.index.unwrap_or(default_index);
+        if let Some(content) = &candidate.content {
+            // role 映射
+            let role = content
+                .role
+                .as_deref()
+                .map(|r| match r {
+                    "model" => Role::assistant(),
+                    other => Role(other.to_string()),
+                })
+                .unwrap_or_else(Role::assistant);
+
+            let mut content_deltas = Vec::new();
+
+            for part in &content.parts {
+                // 函数调用增量 -> ToolCallDelta 事件
+                if let Some(call) = &part.function_call {
+                    let args_str = match serde_json::to_string(&call.args) {
+                        Ok(s) => s,
+                        Err(_) => call.args.to_string(),
+                    };
+                    let delta = ToolCallDelta {
+                        index,
+                        id: None,
+                        name: Some(call.name.clone()),
+                        arguments_delta: Some(args_str),
+                        kind: Some(ToolCallKind::Function),
+                        // Gemini 当前没有专门的 tool_calls finish reason，这里统一视为完成
+                        is_finished: true,
+                    };
                     events.push(ChatEvent::ToolCallDelta(delta));
+                    continue;
                 }
+
+                // 文本片段 -> MessageDelta 文本增量
+                if let Some(text) = &part.text {
+                    if !text.is_empty() {
+                        content_deltas.push(ContentDelta::Text { text: text.clone() });
+                        continue;
+                    }
+                }
+
+                // 其它多模态 / 元信息 -> Json 增量
+                let value = serde_json::to_value(part).unwrap_or_else(|_| json!({}));
+                content_deltas.push(ContentDelta::Json { value });
+            }
+
+            if !content_deltas.is_empty() || candidate.finish_reason.is_some() {
+                let message_delta = MessageDelta {
+                    index,
+                    role: Some(role),
+                    content: content_deltas,
+                    finish_reason: candidate
+                        .finish_reason
+                        .as_deref()
+                        .map(convert_finish_reason),
+                };
+                events.push(ChatEvent::MessageDelta(message_delta));
             }
         }
     }
-    let usage = chunk.usage.clone().map(convert_usage);
+
+    let usage = chunk.usage_metadata.as_ref().map(convert_usage);
     let raw = serde_json::to_value(&chunk).ok();
     Ok(ChatChunk {
         events,
@@ -247,94 +276,62 @@ fn convert_stream_chunk(
         is_terminal: false,
         provider: ProviderMetadata {
             provider: provider.to_string(),
-            request_id: None,
+            request_id: chunk.response_id,
             endpoint: Some(endpoint.to_string()),
             raw,
         },
     })
 }
 
-fn convert_content_delta(parts: &[OpenAiMessagePart]) -> Result<Vec<ContentDelta>, LLMError> {
-    let mut deltas = Vec::new();
-    for part in parts {
-        match part.kind.as_str() {
-            "text" | "input_text" => {
-                if let Some(text) = &part.text {
-                    if !text.is_empty() {
-                        deltas.push(ContentDelta::Text { text: text.clone() });
-                    }
-                }
-            }
-            _ => {
-                let value =
-                    serde_json::to_value(part).unwrap_or_else(|_| json!({ "type": part.kind }));
-                deltas.push(ContentDelta::Json { value });
-            }
-        }
-    }
-    Ok(deltas)
-}
-
-fn convert_tool_call_delta_event(
-    delta: &OpenAiToolCallDelta,
-    fallback_index: usize,
-    finish_reason: Option<&str>,
-) -> Result<ToolCallDelta, LLMError> {
-    let index = delta.index.unwrap_or(fallback_index);
-    let (name, arguments) = delta
-        .function
-        .as_ref()
-        .map(|f| (f.name.clone(), f.arguments.clone()))
-        .unwrap_or((None, None));
-    let kind = match delta.kind.as_deref() {
-        Some("function") => Some(ToolCallKind::Function),
-        _ => None,
-    };
-    Ok(ToolCallDelta {
-        index,
-        id: delta.id.clone(),
-        name,
-        arguments_delta: arguments,
-        kind,
-        is_finished: matches!(finish_reason, Some("tool_calls")),
-    })
-}
-
 #[cfg(test)]
 mod tests {
-    use super::super::types::{
-        OpenAiDeltaContent, OpenAiMessagePart, OpenAiStreamChoice, OpenAiStreamChunk,
-        OpenAiStreamDelta, OpenAiToolCallDelta, OpenAiToolFunctionDelta, OpenAiUsage,
-    };
+    use super::super::types::{GeminiCandidate, GeminiContent, GeminiPart, GeminiUsageMetadata};
     use super::*;
     use crate::types::{ChatEvent, ContentDelta, FinishReason};
 
     /// 仅包含文本增量的流式 chunk
     #[test]
     fn convert_stream_chunk_with_text_delta() {
-        let chunk = OpenAiStreamChunk {
-            choices: vec![OpenAiStreamChoice {
-                index: 0,
-                delta: Some(OpenAiStreamDelta {
-                    role: Some("assistant".to_string()),
-                    content: Some(OpenAiDeltaContent::Text("hello".to_string())),
-                    tool_calls: None,
+        let chunk = GeminiGenerateContentResponse {
+            candidates: vec![GeminiCandidate {
+                content: Some(GeminiContent {
+                    parts: vec![GeminiPart {
+                        text: Some("hello".to_string()),
+                        inline_data: None,
+                        file_data: None,
+                        function_call: None,
+                        function_response: None,
+                        executable_code: None,
+                        code_execution_result: None,
+                        extra: Default::default(),
+                    }],
+                    role: Some("model".to_string()),
+                    extra: Default::default(),
                 }),
-                finish_reason: Some("stop".to_string()),
+                finish_reason: Some("STOP".to_string()),
+                index: Some(0),
+                extra: Default::default(),
             }],
-            usage: Some(OpenAiUsage {
-                prompt_tokens: Some(1),
-                completion_tokens: Some(2),
-                total_tokens: Some(3),
-                reasoning_tokens: Some(0),
+            prompt_feedback: None,
+            usage_metadata: Some(GeminiUsageMetadata {
+                prompt_token_count: Some(1),
+                cached_content_token_count: None,
+                candidates_token_count: Some(2),
+                total_token_count: Some(3),
+                tool_use_prompt_token_count: None,
+                thoughts_token_count: None,
+                extra: Default::default(),
             }),
+            model_version: Some("gemini-2.0-flash".to_string()),
+            response_id: None,
+            extra: Default::default(),
         };
 
         let chat_chunk =
-            convert_stream_chunk(chunk, "openai_chat", "endpoint").expect("convert should succeed");
+            convert_stream_chunk(chunk, "google_gemini", "endpoint").expect("convert succeeds");
 
         assert!(!chat_chunk.is_terminal);
-        assert_eq!(chat_chunk.provider.provider, "openai_chat");
+        assert_eq!(chat_chunk.provider.provider, "google_gemini");
         assert_eq!(chat_chunk.provider.endpoint.as_deref(), Some("endpoint"));
 
         let usage = chat_chunk.usage.expect("usage should exist");
@@ -342,7 +339,6 @@ mod tests {
         assert_eq!(usage.completion_tokens, Some(2));
         assert_eq!(usage.total_tokens, Some(3));
 
-        // 产生一个 MessageDelta 事件
         assert_eq!(chat_chunk.events.len(), 1);
         match &chat_chunk.events[0] {
             ChatEvent::MessageDelta(delta) => {
@@ -360,67 +356,5 @@ mod tests {
             }
             other => panic!("unexpected chat event: {other:?}"),
         }
-    }
-
-    /// content 为 Parts 形式的增量
-    #[test]
-    fn convert_content_delta_from_parts() {
-        let parts = vec![
-            OpenAiMessagePart {
-                kind: "text".to_string(),
-                text: Some("hi".to_string()),
-                image_url: None,
-                extra: Default::default(),
-            },
-            OpenAiMessagePart {
-                kind: "custom".to_string(),
-                text: None,
-                image_url: None,
-                extra: [("x".to_string(), serde_json::json!(1))]
-                    .into_iter()
-                    .collect(),
-            },
-        ];
-
-        let deltas = convert_content_delta(&parts).expect("convert should succeed");
-        assert_eq!(deltas.len(), 2);
-        match &deltas[0] {
-            ContentDelta::Text { text } => assert_eq!(text, "hi"),
-            other => panic!("unexpected first delta: {other:?}"),
-        }
-        match &deltas[1] {
-            ContentDelta::Json { value } => {
-                assert_eq!(value["type"], serde_json::json!("custom"));
-                assert_eq!(value["x"], serde_json::json!(1));
-            }
-            other => panic!("unexpected second delta: {other:?}"),
-        }
-    }
-
-    /// 工具调用增量的转换
-    #[test]
-    fn convert_tool_call_delta_event_basic() {
-        let delta = OpenAiToolCallDelta {
-            index: Some(3),
-            id: Some("call_1".to_string()),
-            kind: Some("function".to_string()),
-            function: Some(OpenAiToolFunctionDelta {
-                name: Some("get_weather".to_string()),
-                arguments: Some(r#"{"city":"Boston"}"#.to_string()),
-            }),
-        };
-
-        let mapped = convert_tool_call_delta_event(&delta, 0, Some("tool_calls"))
-            .expect("convert should succeed");
-
-        assert_eq!(mapped.index, 3);
-        assert_eq!(mapped.id.as_deref(), Some("call_1"));
-        assert_eq!(mapped.name.as_deref(), Some("get_weather"));
-        assert_eq!(
-            mapped.arguments_delta.as_deref(),
-            Some(r#"{"city":"Boston"}"#)
-        );
-        assert!(matches!(mapped.kind, Some(ToolCallKind::Function)));
-        assert!(mapped.is_finished);
     }
 }
