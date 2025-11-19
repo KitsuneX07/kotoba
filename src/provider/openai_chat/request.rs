@@ -301,7 +301,7 @@ mod tests {
     use crate::types::{
         AudioContent, ChatOptions, ChatRequest, ContentPart, FileContent, ImageContent,
         ImageDetail, ImageSource, MediaSource, Message, ReasoningOptions, Role, TextContent,
-        ToolCall, ToolCallKind, ToolChoice, ToolDefinition, ToolKind, VideoContent,
+        ToolChoice, ToolDefinition, ToolKind, VideoContent,
     };
     use serde_json::json;
 
@@ -330,7 +330,9 @@ mod tests {
         assert_eq!(body["stream"], json!(false));
 
         // 消息结构
-        let messages = body["messages"].as_array().expect("messages should be array");
+        let messages = body["messages"]
+            .as_array()
+            .expect("messages should be array");
         assert_eq!(messages.len(), 1);
         let msg = &messages[0];
         assert_eq!(msg["role"], json!("user"));
@@ -527,15 +529,13 @@ mod tests {
     /// 工具调用和 tool_choice 映射
     #[test]
     fn convert_tools_and_tool_choice() {
-        let tools = vec![
-            ToolDefinition {
-                name: "fn1".to_string(),
-                description: Some("desc".to_string()),
-                input_schema: Some(json!({"type": "object"})),
-                kind: ToolKind::Function,
-                metadata: None,
-            },
-        ];
+        let tools = vec![ToolDefinition {
+            name: "fn1".to_string(),
+            description: Some("desc".to_string()),
+            input_schema: Some(json!({"type": "object"})),
+            kind: ToolKind::Function,
+            metadata: None,
+        }];
         let tools_json = convert_tools(&tools).expect("tools should convert");
         assert_eq!(
             tools_json[0],
