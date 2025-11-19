@@ -8,6 +8,7 @@ use crate::error::LLMError;
 use crate::types::{CapabilityDescriptor, ChatChunk, ChatRequest, ChatResponse};
 
 pub mod openai_chat;
+pub mod openai_responses;
 
 /// 流式响应别名
 pub type ChatStream = Pin<Box<dyn Stream<Item = Result<ChatChunk, LLMError>> + Send>>;
