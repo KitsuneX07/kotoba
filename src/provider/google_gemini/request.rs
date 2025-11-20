@@ -435,10 +435,12 @@ mod tests {
     /// 响应格式为 JSON Schema 时，生成 generationConfig.response_schema
     #[test]
     fn build_generation_config_with_json_schema() {
-        let mut options = ChatOptions::default();
-        options.temperature = Some(0.5);
-        options.top_p = Some(0.9);
-        options.max_output_tokens = Some(256);
+        let options = ChatOptions {
+            temperature: Some(0.5),
+            top_p: Some(0.9),
+            max_output_tokens: Some(256),
+            ..ChatOptions::default()
+        };
 
         let schema = json!({
             "type": "OBJECT",

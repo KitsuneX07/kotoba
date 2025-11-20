@@ -370,22 +370,24 @@ mod tests {
         assert_eq!(content[0], json!({ "type": "input_text", "text": "hello" }));
     }
 
-    /// system / developer 折叠为 instructions，其余作为 input
+    /// system / developer are folded into `instructions`, the rest go into `input`
     #[test]
     fn build_body_with_instructions_and_input_messages() {
-        let mut options = ChatOptions::default();
-        options.model = Some("gpt-4.1".to_string());
-        options.temperature = Some(0.3);
-        options.top_p = Some(0.9);
-        options.max_output_tokens = Some(256);
-        options.parallel_tool_calls = Some(true);
-        options.reasoning = Some(ReasoningOptions {
-            effort: Some(ReasoningEffort::High),
-            budget_tokens: None,
-            extra: [("reasoning_custom".to_string(), json!("custom"))]
-                .into_iter()
-                .collect(),
-        });
+        let mut options = ChatOptions {
+            model: Some("gpt-4.1".to_string()),
+            temperature: Some(0.3),
+            top_p: Some(0.9),
+            max_output_tokens: Some(256),
+            parallel_tool_calls: Some(true),
+            reasoning: Some(ReasoningOptions {
+                effort: Some(ReasoningEffort::High),
+                budget_tokens: None,
+                extra: [("reasoning_custom".to_string(), json!("custom"))]
+                    .into_iter()
+                    .collect(),
+            }),
+            ..ChatOptions::default()
+        };
         options
             .extra
             .insert("service_tier".to_string(), json!("default"));

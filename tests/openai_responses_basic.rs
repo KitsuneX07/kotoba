@@ -24,8 +24,10 @@ async fn openai_responses_basic_text_dialog_live() {
         return;
     };
 
-    let mut options = ChatOptions::default();
-    options.model = Some(model.clone());
+    let options = ChatOptions {
+        model: Some(model.clone()),
+        ..ChatOptions::default()
+    };
 
     // 与 openai_chat_basic 中类似，使用 developer + user 的简单问候对话
     let request = ChatRequest {
@@ -91,9 +93,11 @@ async fn openai_responses_basic_image_understanding_dialog_live() {
         return;
     };
 
-    let mut options = ChatOptions::default();
-    options.model = Some(model.clone());
-    options.max_output_tokens = Some(300);
+    let options = ChatOptions {
+        model: Some(model.clone()),
+        max_output_tokens: Some(300),
+        ..ChatOptions::default()
+    };
 
     // 读取本地测试图片并编码为 base64，走 data URL 通道
     let image_bytes = fs::read("tests/assets/Gfp-wisconsin-madison-the-nature-boardwalk.jpg")
@@ -168,8 +172,10 @@ async fn openai_responses_basic_tool_call_dialog_live() {
         return;
     };
 
-    let mut options = ChatOptions::default();
-    options.model = Some(model.clone());
+    let options = ChatOptions {
+        model: Some(model.clone()),
+        ..ChatOptions::default()
+    };
 
     let request = ChatRequest {
         messages: vec![Message {
@@ -248,8 +254,10 @@ async fn openai_responses_basic_tool_call_dialog_live() {
 }
 
 fn build_stream_request(model: &str) -> ChatRequest {
-    let mut options = ChatOptions::default();
-    options.model = Some(model.to_string());
+    let options = ChatOptions {
+        model: Some(model.to_string()),
+        ..ChatOptions::default()
+    };
 
     // 与 openai_chat_live_sync_and_stream 类似，这里用英文提示，方便兼容各种模型
     ChatRequest {

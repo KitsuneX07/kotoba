@@ -342,24 +342,26 @@ mod tests {
         assert_eq!(content[0], json!({"type": "text", "text": "hello"}));
     }
 
-    /// 覆盖 ChatOptions 中的大部分控制字段映射
+    /// Cover most control fields mapping in ChatOptions
     #[test]
     fn build_body_with_options_and_metadata() {
-        let mut options = ChatOptions::default();
-        options.model = Some("gpt-4.1".to_string());
-        options.temperature = Some(0.3);
-        options.top_p = Some(0.9);
-        options.max_output_tokens = Some(256);
-        options.presence_penalty = Some(0.5);
-        options.frequency_penalty = Some(-0.2);
-        options.parallel_tool_calls = Some(true);
-        options.reasoning = Some(ReasoningOptions {
-            effort: Some(ReasoningEffort::High),
-            budget_tokens: Some(1024),
-            extra: [("reasoning_custom".to_string(), json!("custom"))]
-                .into_iter()
-                .collect(),
-        });
+        let mut options = ChatOptions {
+            model: Some("gpt-4.1".to_string()),
+            temperature: Some(0.3),
+            top_p: Some(0.9),
+            max_output_tokens: Some(256),
+            presence_penalty: Some(0.5),
+            frequency_penalty: Some(-0.2),
+            parallel_tool_calls: Some(true),
+            reasoning: Some(ReasoningOptions {
+                effort: Some(ReasoningEffort::High),
+                budget_tokens: Some(1024),
+                extra: [("reasoning_custom".to_string(), json!("custom"))]
+                    .into_iter()
+                    .collect(),
+            }),
+            ..ChatOptions::default()
+        };
         options
             .extra
             .insert("service_tier".to_string(), json!("default"));
