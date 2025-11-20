@@ -5,7 +5,10 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::error::LLMError;
-use crate::http::{DynHttpTransport, HttpRequest, HttpResponse, HttpStreamResponse};
+use crate::http::{
+    DynHttpTransport, HttpResponse, HttpStreamResponse, post_json_stream_with_headers,
+    post_json_with_headers,
+};
 use crate::provider::{ChatStream, LLMProvider};
 use crate::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
 
@@ -103,21 +106,23 @@ impl AnthropicMessagesProvider {
     }
 
     async fn send_request(&self, body: Value) -> Result<HttpResponse, LLMError> {
-        let payload = serde_json::to_vec(&body).map_err(|err| LLMError::Validation {
-            message: format!("failed to serialize request: {err}"),
-        })?;
-        let mut request = HttpRequest::post_json(self.endpoint(), payload);
-        request.headers = self.build_headers();
-        self.transport.send(request).await
+        post_json_with_headers(
+            self.transport.as_ref(),
+            self.endpoint(),
+            self.build_headers(),
+            &body,
+        )
+        .await
     }
 
     async fn send_stream_request(&self, body: Value) -> Result<HttpStreamResponse, LLMError> {
-        let payload = serde_json::to_vec(&body).map_err(|err| LLMError::Validation {
-            message: format!("failed to serialize request: {err}"),
-        })?;
-        let mut request = HttpRequest::post_json(self.endpoint(), payload);
-        request.headers = self.build_headers();
-        self.transport.send_stream(request).await
+        post_json_stream_with_headers(
+            self.transport.as_ref(),
+            self.endpoint(),
+            self.build_headers(),
+            &body,
+        )
+        .await
     }
 
     fn ensure_success(&self, response: HttpResponse) -> Result<String, LLMError> {

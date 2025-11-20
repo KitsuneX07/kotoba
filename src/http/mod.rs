@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_core::Stream;
+use serde::Serialize;
 
 use crate::error::LLMError;
 
@@ -38,6 +39,12 @@ impl HttpRequest {
             body: Some(body),
             timeout: None,
         }
+    }
+
+    /// 替换请求头 便于在构造后统一设置 Provider 定制 header
+    pub fn with_headers(mut self, headers: HashMap<String, String>) -> Self {
+        self.headers = headers;
+        self
     }
 }
 
@@ -78,5 +85,89 @@ pub trait HttpTransport: Send + Sync {
 
 /// 线程安全别名
 pub type DynHttpTransport = Arc<dyn HttpTransport>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use serde::ser;
+
+    /// 一个在 send/send_stream 被调用时直接 panic 的 Transport
+    /// 用于验证序列化失败时不会触发底层请求发送
+    struct PanicTransport;
+
+    #[async_trait]
+    impl HttpTransport for PanicTransport {
+        async fn send(&self, _request: HttpRequest) -> Result<HttpResponse, LLMError> {
+            panic!("send should not be called");
+        }
+
+        async fn send_stream(&self, _request: HttpRequest) -> Result<HttpStreamResponse, LLMError> {
+            panic!("send_stream should not be called");
+        }
+    }
+
+    /// 自定义一个总是序列化失败的类型 用于触发序列化错误分支
+    struct NonSerializableBody;
+
+    impl Serialize for NonSerializableBody {
+        fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            Err(ser::Error::custom(
+                "intentional serialization failure for test",
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn post_json_with_headers_returns_validation_on_serde_error() {
+        let transport = PanicTransport;
+        let body = NonSerializableBody;
+        let headers = HashMap::new();
+
+        let result = post_json_with_headers(&transport, "http://example.com", headers, &body).await;
+
+        match result {
+            Err(LLMError::Validation { message }) => {
+                assert!(
+                    message.contains("failed to serialize request"),
+                    "unexpected validation message: {message}"
+                );
+            }
+            Ok(_) => panic!("expected validation error for non serializable body"),
+            other => panic!("unexpected error type: {other:?}"),
+        }
+    }
+}
+
+/// 使用统一逻辑发送 JSON POST 请求 方便 Provider 复用
+pub async fn post_json_with_headers<T: Serialize>(
+    transport: &dyn HttpTransport,
+    url: impl Into<String>,
+    headers: HashMap<String, String>,
+    body: &T,
+) -> Result<HttpResponse, LLMError> {
+    let payload = serde_json::to_vec(body).map_err(|err| LLMError::Validation {
+        message: format!("failed to serialize request: {err}"),
+    })?;
+    let request = HttpRequest::post_json(url, payload).with_headers(headers);
+    transport.send(request).await
+}
+
+/// 使用统一逻辑发送 JSON POST 流式请求
+pub async fn post_json_stream_with_headers<T: Serialize>(
+    transport: &dyn HttpTransport,
+    url: impl Into<String>,
+    headers: HashMap<String, String>,
+    body: &T,
+) -> Result<HttpStreamResponse, LLMError> {
+    let payload = serde_json::to_vec(body).map_err(|err| LLMError::Validation {
+        message: format!("failed to serialize request: {err}"),
+    })?;
+    let request = HttpRequest::post_json(url, payload).with_headers(headers);
+    transport.send_stream(request).await
+}
 
 pub mod reqwest;
