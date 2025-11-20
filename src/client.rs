@@ -89,9 +89,19 @@ pub struct LLMClientBuilder {
 
 impl LLMClientBuilder {
     /// 注册一个句柄对应的 Provider
-    pub fn register_handle<S: Into<String>>(mut self, handle: S, provider: DynProvider) -> Self {
-        self.providers.insert(handle.into(), provider);
-        self
+    pub fn register_handle<S: Into<String>>(
+        mut self,
+        handle: S,
+        provider: DynProvider,
+    ) -> Result<Self, LLMError> {
+        let handle = handle.into();
+        if self.providers.contains_key(&handle) {
+            return Err(LLMError::Validation {
+                message: format!("duplicate model handle: {handle}"),
+            });
+        }
+        self.providers.insert(handle, provider);
+        Ok(self)
     }
 
     /// 构建最终的 LLMClient
@@ -266,5 +276,39 @@ mod tests {
         handles.sort();
 
         assert_eq!(handles, vec!["stream-enabled".to_string()]);
+    }
+
+    /// 重复句柄应当在注册阶段被显式拒绝
+    #[test]
+    fn register_handle_rejects_duplicate_handle() {
+        let provider1 = Arc::new(DummyProvider {
+            name: "p1",
+            caps: CapabilityDescriptor::default(),
+        }) as DynProvider;
+        let provider2 = Arc::new(DummyProvider {
+            name: "p2",
+            caps: CapabilityDescriptor::default(),
+        }) as DynProvider;
+
+        let builder = LLMClient::builder();
+        let builder = builder
+            .register_handle("duplicate", provider1)
+            .expect("first registration should succeed");
+
+        let result = builder.register_handle("duplicate", provider2);
+        let err = match result {
+            Ok(_) => panic!("expected duplicate handle error"),
+            Err(err) => err,
+        };
+
+        match err {
+            LLMError::Validation { message } => {
+                assert!(
+                    message.contains("duplicate model handle: duplicate"),
+                    "unexpected validation message for duplicate handle: {message}"
+                );
+            }
+            other => panic!("unexpected error type for duplicate handle: {other:?}"),
+        }
     }
 }

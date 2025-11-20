@@ -65,7 +65,7 @@ pub fn build_client_from_configs(
 
     for config in configs {
         let provider = build_provider_from_config(config, transport.clone())?;
-        builder = builder.register_handle(config.handle.clone(), provider);
+        builder = builder.register_handle(config.handle.clone(), provider)?;
     }
 
     Ok(builder.build())
@@ -359,6 +359,53 @@ mod tests {
         let result = build_client_from_configs(&configs, transport);
         if let Err(err) = result {
             panic!("expected ok for bearer token but got error: {err:?}");
+        }
+    }
+
+    /// 当配置中出现重复 handle 时 应当报校验错误
+    #[test]
+    fn build_client_from_configs_rejects_duplicate_handles() {
+        let transport = default_dyn_transport().expect("transport");
+
+        let cfg1 = ModelConfig {
+            handle: "dup-handle".to_string(),
+            provider: ProviderKind::OpenAiChat,
+            credential: Credential::ApiKey {
+                header: None,
+                key: "key-1".to_string(),
+            },
+            default_model: Some("gpt-4.1-mini".to_string()),
+            base_url: None,
+            extra: HashMap::new(),
+        };
+
+        let cfg2 = ModelConfig {
+            handle: "dup-handle".to_string(),
+            provider: ProviderKind::GoogleGemini,
+            credential: Credential::ApiKey {
+                header: None,
+                key: "key-2".to_string(),
+            },
+            default_model: Some("gemini-2.0-flash".to_string()),
+            base_url: None,
+            extra: HashMap::new(),
+        };
+
+        let configs = vec![cfg1, cfg2];
+        let result = build_client_from_configs(&configs, transport);
+        let err = match result {
+            Ok(_) => panic!("expected duplicate handle error"),
+            Err(err) => err,
+        };
+
+        match err {
+            LLMError::Validation { message } => {
+                assert!(
+                    message.contains("duplicate model handle: dup-handle"),
+                    "unexpected validation message for duplicate handle in configs: {message}"
+                );
+            }
+            other => panic!("unexpected error type for duplicate handle in configs: {other:?}"),
         }
     }
 }
