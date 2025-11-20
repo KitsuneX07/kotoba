@@ -7,6 +7,7 @@ use futures_core::Stream;
 use crate::error::LLMError;
 use crate::types::{CapabilityDescriptor, ChatChunk, ChatRequest, ChatResponse};
 
+pub mod anthropic_messages;
 pub mod google_gemini;
 pub mod openai_chat;
 pub mod openai_responses;
