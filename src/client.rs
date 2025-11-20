@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use async_trait::async_trait;
+
 use crate::error::LLMError;
 use crate::provider::{ChatStream, DynProvider};
 use crate::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
@@ -82,6 +84,32 @@ impl LLMClient {
     }
 }
 
+/// 便于依赖注入与测试的轻量 Client 抽象
+#[async_trait]
+pub trait LLMClientLike: Send + Sync {
+    /// 发送同步聊天请求
+    async fn chat(&self, handle: &str, request: ChatRequest) -> Result<ChatResponse, LLMError>;
+
+    /// 发起流式聊天请求
+    async fn stream_chat(&self, handle: &str, request: ChatRequest)
+    -> Result<ChatStream, LLMError>;
+}
+
+#[async_trait]
+impl LLMClientLike for LLMClient {
+    async fn chat(&self, handle: &str, request: ChatRequest) -> Result<ChatResponse, LLMError> {
+        LLMClient::chat(self, handle, request).await
+    }
+
+    async fn stream_chat(
+        &self,
+        handle: &str,
+        request: ChatRequest,
+    ) -> Result<ChatStream, LLMError> {
+        LLMClient::stream_chat(self, handle, request).await
+    }
+}
+
 /// 负责注册 Provider 的 Builder
 pub struct LLMClientBuilder {
     providers: HashMap<String, DynProvider>,
@@ -116,10 +144,7 @@ impl LLMClientBuilder {
 mod tests {
     use super::*;
     use crate::provider::LLMProvider;
-    use crate::types::{ChatChunk, ChatRequest, ChatResponse};
-    use async_trait::async_trait;
-    use futures_core::Stream;
-    use std::pin::Pin;
+    use crate::types::{ChatRequest, ChatResponse};
     use std::sync::Arc;
 
     /// 简单的测试 Provider 实现 只关注 capabilities
@@ -309,6 +334,44 @@ mod tests {
                 );
             }
             other => panic!("unexpected error type for duplicate handle: {other:?}"),
+        }
+    }
+
+    /// 通过 LLMClientLike trait 对 LLMClient 进行调用
+    #[tokio::test]
+    async fn llmclient_implements_llmclientlike_trait() {
+        let provider = Arc::new(DummyProvider {
+            name: "p1",
+            caps: CapabilityDescriptor::default(),
+        }) as DynProvider;
+
+        let client = LLMClient {
+            providers: HashMap::from([("handle".to_string(), provider)]),
+        };
+
+        // 通过 trait 对象调用 chat 确认编译与运行行为正常
+        let trait_obj: &dyn LLMClientLike = &client;
+        let result = trait_obj
+            .chat(
+                "handle",
+                ChatRequest {
+                    messages: Vec::new(),
+                    options: Default::default(),
+                    tools: Vec::new(),
+                    tool_choice: None,
+                    response_format: None,
+                    metadata: None,
+                },
+            )
+            .await;
+
+        // DummyProvider 总是返回 NotImplemented
+        let err = result.expect_err("chat should return error from dummy provider");
+        match err {
+            LLMError::NotImplemented { feature } => {
+                assert_eq!(feature, "dummy_chat");
+            }
+            other => panic!("unexpected error type from llmclientlike chat: {other:?}"),
         }
     }
 }

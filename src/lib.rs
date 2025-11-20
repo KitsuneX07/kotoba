@@ -7,7 +7,7 @@ pub mod http;
 pub mod provider;
 pub mod types;
 
-pub use client::LLMClient;
+pub use client::{LLMClient, LLMClientLike};
 pub use error::LLMError;
 pub use provider::{ChatStream, LLMProvider};
 pub use types::*;
