@@ -27,7 +27,6 @@ pub(crate) fn map_response(
         match convert_content_block(block)? {
             ConvertedBlock::MessagePart(part) => message_parts.push(part),
             ConvertedBlock::ToolCall(call) => tool_calls.push(call),
-            ConvertedBlock::Ignored => {}
         }
     }
 
@@ -68,7 +67,6 @@ pub(crate) fn map_response(
 enum ConvertedBlock {
     MessagePart(ContentPart),
     ToolCall(ToolCall),
-    Ignored,
 }
 
 fn convert_content_block(block: &AnthropicContentBlock) -> Result<ConvertedBlock, LLMError> {

@@ -2,6 +2,15 @@
 name = "kotoba"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+description = "Unified multi-vendor LLM client abstraction, supporting providers such as OpenAI, Anthropic, Google Gemini, etc."
+license = "MIT"
+repository = "https://github.com/KitsuneX07/kotoba"
+homepage = "https://kitsunex07.github.io/kotoba/"
+documentation = "https://docs.rs/kotoba"
+readme = "README.md"
+keywords = ["llm", "ai", "openai", "anthropic", "gemini"]
+categories = ["api-bindings", "asynchronous", "development-tools::testing"]
 
 [dependencies]
 async-trait = "0.1"
@@ -16,3 +25,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 [dev-dependencies]
 dotenvy = "0.15"
 base64 = "0.22"
+
+[package.metadata.docs.rs]
+all-features = true
+targets = ["x86_64-unknown-linux-gnu"]

@@ -37,7 +37,7 @@
 
 ```toml
 [dependencies]
-kotoba = "0.1" # 请替换为最新版本
+kotoba = "0.1.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -161,6 +161,10 @@ cargo test --test integration -- --ignored
 ```bash
 mdbook serve docs --open
 ```
+
+## 版本历史
+
+详细变更请参阅 [CHANGELOG.md](CHANGELOG.md)
 
 ## License
 
