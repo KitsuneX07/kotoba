@@ -27,6 +27,7 @@ target
 
 *.md
 !README.md
+!docs/**/*.md
 
 .env
 .DS_Store
