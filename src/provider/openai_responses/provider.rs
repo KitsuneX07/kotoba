@@ -39,9 +39,9 @@ impl OpenAiResponsesProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::openai_responses::OpenAiResponsesProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::openai_responses::OpenAiResponsesProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = OpenAiResponsesProvider::new(transport, "key");
     /// assert_eq!(provider.name(), "openai_responses");
@@ -62,9 +62,9 @@ impl OpenAiResponsesProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::openai_responses::OpenAiResponsesProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::openai_responses::OpenAiResponsesProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = OpenAiResponsesProvider::new(transport, "key")
     ///     .with_base_url("https://proxy.local");
@@ -80,9 +80,9 @@ impl OpenAiResponsesProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::openai_responses::OpenAiResponsesProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::openai_responses::OpenAiResponsesProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = OpenAiResponsesProvider::new(transport, "key").with_organization("org_123");
     /// assert_eq!(provider.name(), "openai_responses");
@@ -97,9 +97,9 @@ impl OpenAiResponsesProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::openai_responses::OpenAiResponsesProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::openai_responses::OpenAiResponsesProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = OpenAiResponsesProvider::new(transport, "key").with_project("proj_alpha");
     /// assert_eq!(provider.name(), "openai_responses");
@@ -114,9 +114,9 @@ impl OpenAiResponsesProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::openai_responses::OpenAiResponsesProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::openai_responses::OpenAiResponsesProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = OpenAiResponsesProvider::new(transport, "key")
     ///     .with_default_model("gpt-4.1-mini");

@@ -31,8 +31,8 @@ pub trait HttpTransport: Send + Sync {
 ```rust
 use async_trait::async_trait;
 use futures_util::stream;
-use kotoba::http::{HttpTransport, HttpRequest, HttpResponse, HttpStreamResponse, HttpBodyStream};
-use kotoba::error::LLMError;
+use kotoba_llm::http::{HttpTransport, HttpRequest, HttpResponse, HttpStreamResponse, HttpBodyStream};
+use kotoba_llm::error::LLMError;
 
 struct MockTransport;
 

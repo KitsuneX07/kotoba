@@ -27,10 +27,10 @@ impl LLMClient {
     /// # use std::collections::HashMap;
     /// # use std::sync::Arc;
     /// # use async_trait::async_trait;
-    /// # use kotoba::client::LLMClient;
-    /// # use kotoba::error::LLMError;
-    /// # use kotoba::provider::{LLMProvider, ChatStream};
-    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use kotoba_llm::client::LLMClient;
+    /// # use kotoba_llm::error::LLMError;
+    /// # use kotoba_llm::provider::{LLMProvider, ChatStream};
+    /// # use kotoba_llm::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
     /// # use futures_util::stream;
     /// # struct DummyProvider;
     /// # #[async_trait]
@@ -67,10 +67,10 @@ impl LLMClient {
     /// # use std::collections::HashMap;
     /// # use std::sync::Arc;
     /// # use async_trait::async_trait;
-    /// # use kotoba::client::LLMClient;
-    /// # use kotoba::error::LLMError;
-    /// # use kotoba::provider::{LLMProvider, ChatStream};
-    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse, Message, Role};
+    /// # use kotoba_llm::client::LLMClient;
+    /// # use kotoba_llm::error::LLMError;
+    /// # use kotoba_llm::provider::{LLMProvider, ChatStream};
+    /// # use kotoba_llm::types::{CapabilityDescriptor, ChatRequest, ChatResponse, Message, Role};
     /// # use futures_util::stream;
     /// # struct DummyProvider;
     /// # #[async_trait]
@@ -125,10 +125,10 @@ impl LLMClient {
     /// # use std::collections::HashMap;
     /// # use std::sync::Arc;
     /// # use async_trait::async_trait;
-    /// # use kotoba::client::LLMClient;
-    /// # use kotoba::error::LLMError;
-    /// # use kotoba::provider::{LLMProvider, ChatStream};
-    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use kotoba_llm::client::LLMClient;
+    /// # use kotoba_llm::error::LLMError;
+    /// # use kotoba_llm::provider::{LLMProvider, ChatStream};
+    /// # use kotoba_llm::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
     /// # use futures_util::stream;
     /// # struct DummyProvider;
     /// # #[async_trait]
@@ -188,10 +188,10 @@ impl LLMClient {
     /// # use std::collections::HashMap;
     /// # use std::sync::Arc;
     /// # use async_trait::async_trait;
-    /// # use kotoba::client::LLMClient;
-    /// # use kotoba::error::LLMError;
-    /// # use kotoba::provider::{LLMProvider, ChatStream};
-    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use kotoba_llm::client::LLMClient;
+    /// # use kotoba_llm::error::LLMError;
+    /// # use kotoba_llm::provider::{LLMProvider, ChatStream};
+    /// # use kotoba_llm::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
     /// # use futures_util::stream;
     /// # struct DummyProvider;
     /// # #[async_trait]
@@ -222,10 +222,10 @@ impl LLMClient {
     /// # use std::collections::HashMap;
     /// # use std::sync::Arc;
     /// # use async_trait::async_trait;
-    /// # use kotoba::client::LLMClient;
-    /// # use kotoba::error::LLMError;
-    /// # use kotoba::provider::{LLMProvider, ChatStream};
-    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use kotoba_llm::client::LLMClient;
+    /// # use kotoba_llm::error::LLMError;
+    /// # use kotoba_llm::provider::{LLMProvider, ChatStream};
+    /// # use kotoba_llm::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
     /// # use futures_util::stream;
     /// # struct DummyProvider;
     /// # #[async_trait]
@@ -264,10 +264,10 @@ impl LLMClient {
     /// # use std::collections::HashMap;
     /// # use std::sync::Arc;
     /// # use async_trait::async_trait;
-    /// # use kotoba::client::LLMClient;
-    /// # use kotoba::error::LLMError;
-    /// # use kotoba::provider::{LLMProvider, ChatStream};
-    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use kotoba_llm::client::LLMClient;
+    /// # use kotoba_llm::error::LLMError;
+    /// # use kotoba_llm::provider::{LLMProvider, ChatStream};
+    /// # use kotoba_llm::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
     /// # use futures_util::stream;
     /// # struct DummyProvider { tools: bool }
     /// # #[async_trait]
@@ -313,10 +313,10 @@ impl LLMClient {
     /// # use std::collections::HashMap;
     /// # use std::sync::Arc;
     /// # use async_trait::async_trait;
-    /// # use kotoba::client::LLMClient;
-    /// # use kotoba::error::LLMError;
-    /// # use kotoba::provider::{LLMProvider, ChatStream};
-    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use kotoba_llm::client::LLMClient;
+    /// # use kotoba_llm::error::LLMError;
+    /// # use kotoba_llm::provider::{LLMProvider, ChatStream};
+    /// # use kotoba_llm::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
     /// # use futures_util::stream;
     /// # struct DummyProvider { stream: bool }
     /// # #[async_trait]
@@ -374,10 +374,10 @@ pub trait LLMClientLike: Send + Sync {
     /// ```
     /// # use std::sync::Arc;
     /// # use async_trait::async_trait;
-    /// # use kotoba::client::{LLMClient, LLMClientLike};
-    /// # use kotoba::error::LLMError;
-    /// # use kotoba::provider::{LLMProvider, ChatStream};
-    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use kotoba_llm::client::{LLMClient, LLMClientLike};
+    /// # use kotoba_llm::error::LLMError;
+    /// # use kotoba_llm::provider::{LLMProvider, ChatStream};
+    /// # use kotoba_llm::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
     /// # use futures_util::stream;
     /// # struct DummyProvider;
     /// # #[async_trait]
@@ -426,10 +426,10 @@ pub trait LLMClientLike: Send + Sync {
     /// ```
     /// # use std::sync::Arc;
     /// # use async_trait::async_trait;
-    /// # use kotoba::client::{LLMClient, LLMClientLike};
-    /// # use kotoba::error::LLMError;
-    /// # use kotoba::provider::{LLMProvider, ChatStream};
-    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use kotoba_llm::client::{LLMClient, LLMClientLike};
+    /// # use kotoba_llm::error::LLMError;
+    /// # use kotoba_llm::provider::{LLMProvider, ChatStream};
+    /// # use kotoba_llm::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
     /// # use futures_util::stream;
     /// # struct DummyProvider;
     /// # #[async_trait]
@@ -501,10 +501,10 @@ impl LLMClientBuilder {
     /// ```
     /// # use std::sync::Arc;
     /// # use async_trait::async_trait;
-    /// # use kotoba::client::LLMClient;
-    /// # use kotoba::error::LLMError;
-    /// # use kotoba::provider::{LLMProvider, ChatStream};
-    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use kotoba_llm::client::LLMClient;
+    /// # use kotoba_llm::error::LLMError;
+    /// # use kotoba_llm::provider::{LLMProvider, ChatStream};
+    /// # use kotoba_llm::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
     /// # use futures_util::stream;
     /// # struct DummyProvider;
     /// # #[async_trait]
@@ -547,10 +547,10 @@ impl LLMClientBuilder {
     /// ```
     /// # use std::sync::Arc;
     /// # use async_trait::async_trait;
-    /// # use kotoba::client::LLMClient;
-    /// # use kotoba::error::LLMError;
-    /// # use kotoba::provider::{LLMProvider, ChatStream};
-    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use kotoba_llm::client::LLMClient;
+    /// # use kotoba_llm::error::LLMError;
+    /// # use kotoba_llm::provider::{LLMProvider, ChatStream};
+    /// # use kotoba_llm::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
     /// # use futures_util::stream;
     /// # struct DummyProvider;
     /// # #[async_trait]

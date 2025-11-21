@@ -70,8 +70,8 @@ pub enum Credential {
 ///
 /// ```
 /// # use std::collections::HashMap;
-/// # use kotoba::config::{ModelConfig, ProviderKind, Credential, build_client_from_configs};
-/// # use kotoba::http::reqwest::default_dyn_transport;
+/// # use kotoba_llm::config::{ModelConfig, ProviderKind, Credential, build_client_from_configs};
+/// # use kotoba_llm::http::reqwest::default_dyn_transport;
 /// let configs = vec![ModelConfig {
 ///     handle: "default-openai".into(),
 ///     provider: ProviderKind::OpenAiChat,

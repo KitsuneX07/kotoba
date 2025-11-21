@@ -23,7 +23,7 @@ impl ReqwestTransport {
     /// # Examples
     ///
     /// ```
-    /// use kotoba::http::reqwest::ReqwestTransport;
+    /// use kotoba_llm::http::reqwest::ReqwestTransport;
     ///
     /// let client = reqwest::Client::builder().build().unwrap();
     /// let transport = ReqwestTransport::new(client);
@@ -38,7 +38,7 @@ impl ReqwestTransport {
     /// # Examples
     ///
     /// ```
-    /// use kotoba::http::reqwest::ReqwestTransport;
+    /// use kotoba_llm::http::reqwest::ReqwestTransport;
     ///
     /// let transport = ReqwestTransport::default_client().expect("transport");
     /// # let _ = transport;
@@ -161,7 +161,7 @@ impl HttpTransport for ReqwestTransport {
 /// # Examples
 ///
 /// ```
-/// use kotoba::http::reqwest::default_dyn_transport;
+/// use kotoba_llm::http::reqwest::default_dyn_transport;
 ///
 /// let transport = default_dyn_transport().expect("transport");
 /// # let _ = transport;

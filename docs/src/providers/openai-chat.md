@@ -19,8 +19,8 @@
 ## 构造方式
 
 ```rust
-use kotoba::provider::openai_chat::OpenAiChatProvider;
-use kotoba::http::reqwest::default_dyn_transport;
+use kotoba_llm::provider::openai_chat::OpenAiChatProvider;
+use kotoba_llm::http::reqwest::default_dyn_transport;
 
 let transport = default_dyn_transport()?;
 let provider = OpenAiChatProvider::new(transport, std::env::var("OPENAI_API_KEY")?)

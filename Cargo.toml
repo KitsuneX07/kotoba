@@ -1,5 +1,5 @@
 [package]
-name = "kotoba"
+name = "kotoba-llm"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
@@ -7,7 +7,7 @@ description = "Unified multi-vendor LLM client abstraction, supporting providers
 license = "MIT"
 repository = "https://github.com/KitsuneX07/kotoba"
 homepage = "https://kitsunex07.github.io/kotoba/"
-documentation = "https://docs.rs/kotoba"
+documentation = "https://docs.rs/kotoba-llm"
 readme = "README.md"
 keywords = ["llm", "ai", "openai", "anthropic", "gemini"]
 categories = ["api-bindings", "asynchronous", "development-tools::testing"]

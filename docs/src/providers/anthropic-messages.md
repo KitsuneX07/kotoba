@@ -19,8 +19,8 @@
 ## 构造方式
 
 ```rust
-use kotoba::provider::anthropic_messages::AnthropicMessagesProvider;
-use kotoba::http::reqwest::default_dyn_transport;
+use kotoba_llm::provider::anthropic_messages::AnthropicMessagesProvider;
+use kotoba_llm::http::reqwest::default_dyn_transport;
 
 let provider = AnthropicMessagesProvider::new(default_dyn_transport()?, std::env::var("ANTHROPIC_KEY")?)
     .with_base_url("https://api.anthropic.com")

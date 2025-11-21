@@ -30,10 +30,10 @@
 ## 使用示例
 
 ```rust
-use kotoba::config::{ModelConfig, ProviderKind, Credential, build_client_from_configs};
-use kotoba::http::reqwest::default_dyn_transport;
+use kotoba_llm::config::{ModelConfig, ProviderKind, Credential, build_client_from_configs};
+use kotoba_llm::http::reqwest::default_dyn_transport;
 
-fn load_client() -> Result<kotoba::LLMClient, kotoba::LLMError> {
+fn load_client() -> Result<kotoba_llm::LLMClient, kotoba_llm::LLMError> {
     let mut extras = std::collections::HashMap::new();
     extras.insert("organization".to_string(), serde_json::json!("org_123"));
 

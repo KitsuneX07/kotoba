@@ -53,7 +53,7 @@ impl LLMError {
     /// # Examples
     ///
     /// ```
-    /// use kotoba::error::LLMError;
+    /// use kotoba_llm::error::LLMError;
     ///
     /// let err = LLMError::transport("dns lookup failed");
     /// assert!(matches!(err, LLMError::Transport { .. }));
@@ -72,7 +72,7 @@ impl LLMError {
     /// # Examples
     ///
     /// ```
-    /// use kotoba::error::LLMError;
+    /// use kotoba_llm::error::LLMError;
     ///
     /// let err = LLMError::provider("openai_chat", "bad JSON payload");
     /// assert!(matches!(err, LLMError::Provider { provider: "openai_chat", .. }));

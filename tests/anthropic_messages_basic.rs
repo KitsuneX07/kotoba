@@ -5,13 +5,13 @@ use std::sync::Arc;
 use base64::{Engine as _, engine::general_purpose};
 use dotenvy::dotenv;
 use futures_util::StreamExt;
-use kotoba::http::reqwest::ReqwestTransport;
-use kotoba::provider::anthropic_messages::AnthropicMessagesProvider;
-use kotoba::types::{
+use kotoba_llm::http::reqwest::ReqwestTransport;
+use kotoba_llm::provider::anthropic_messages::AnthropicMessagesProvider;
+use kotoba_llm::types::{
     ChatOptions, ChatRequest, ContentPart, FinishReason, ImageContent, ImageSource, Message, Role,
     TextContent, ToolChoice, ToolDefinition, ToolKind,
 };
-use kotoba::{LLMProvider, OutputItem};
+use kotoba_llm::{LLMProvider, OutputItem};
 use serde_json::json;
 
 /// Connectivity test for basic Anthropic Messages text conversations.
@@ -185,7 +185,9 @@ async fn anthropic_messages_basic_tool_call_dialog_live() {
     let response = match provider.chat(request).await {
         Ok(resp) => resp,
         // Some compatibility layers emit tool_call_error; skip the test when that happens.
-        Err(kotoba::LLMError::Provider { message, .. }) if message.contains("tool_call_error") => {
+        Err(kotoba_llm::LLMError::Provider { message, .. })
+            if message.contains("tool_call_error") =>
+        {
             eprintln!(
                 "skip anthropic_messages_basic_tool_call_dialog_live: tool_call_error: {message}"
             );
@@ -325,7 +327,7 @@ fn load_env_var(key: &str) -> Option<String> {
     env::var(key).ok().filter(|value| !value.trim().is_empty())
 }
 
-fn first_text_output(response: &kotoba::types::ChatResponse) -> Option<String> {
+fn first_text_output(response: &kotoba_llm::types::ChatResponse) -> Option<String> {
     response.outputs.iter().find_map(|item| {
         if let OutputItem::Message { message, .. } = item {
             message.content.iter().find_map(|part| match part {

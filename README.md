@@ -1,7 +1,7 @@
 # kotoba
 
-[![Crates.io](https://img.shields.io/crates/v/kotoba.svg)](https://crates.io/crates/kotoba)
-[![Documentation](https://docs.rs/kotoba/badge.svg)](https://docs.rs/kotoba)
+[![Crates.io](https://img.shields.io/crates/v/kotoba-llm.svg)](https://crates.io/crates/kotoba-llm)
+[![Documentation](https://docs.rs/kotoba-llm/badge.svg)](https://docs.rs/kotoba-llm)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/KitsuneX07/kotoba/ci.yml)](https://github.com/KitsuneX07/kotoba/actions)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -37,7 +37,7 @@
 
 ```toml
 [dependencies]
-kotoba = "0.1.0"
+kotoba-llm = "0.1.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -48,10 +48,10 @@ tokio = { version = "1", features = ["full"] }
 ```rust
 use std::sync::Arc;
 use futures_util::StreamExt;
-use kotoba::{LLMClient, LLMError};
-use kotoba::http::reqwest::default_dyn_transport;
-use kotoba::provider::openai_chat::OpenAiChatProvider;
-use kotoba::types::{ChatRequest, Message, Role, ContentPart, TextContent};
+use kotoba_llm::{LLMClient, LLMError};
+use kotoba_llm::http::reqwest::default_dyn_transport;
+use kotoba_llm::provider::openai_chat::OpenAiChatProvider;
+use kotoba_llm::types::{ChatRequest, Message, Role, ContentPart, TextContent};
 
 #[tokio::main]
 async fn main() -> Result<(), LLMError> {
@@ -94,8 +94,8 @@ async fn main() -> Result<(), LLMError> {
 在生产环境中，通常需要从动态配置加载多个 Provider。`kotoba` 提供了开箱即用的配置映射能力。
 
 ```rust
-use kotoba::config::{ModelConfig, ProviderKind, Credential, build_client_from_configs};
-use kotoba::http::reqwest::default_dyn_transport;
+use kotoba_llm::config::{ModelConfig, ProviderKind, Credential, build_client_from_configs};
+use kotoba_llm::http::reqwest::default_dyn_transport;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

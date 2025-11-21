@@ -40,9 +40,9 @@ impl AnthropicMessagesProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::anthropic_messages::AnthropicMessagesProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::anthropic_messages::AnthropicMessagesProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = AnthropicMessagesProvider::new(transport, "test-key");
     /// assert_eq!(provider.name(), "anthropic_messages");
@@ -63,9 +63,9 @@ impl AnthropicMessagesProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::anthropic_messages::AnthropicMessagesProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::anthropic_messages::AnthropicMessagesProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = AnthropicMessagesProvider::new(transport, "key")
     ///     .with_base_url("https://anthropic-proxy.local");
@@ -81,9 +81,9 @@ impl AnthropicMessagesProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::anthropic_messages::AnthropicMessagesProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::anthropic_messages::AnthropicMessagesProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = AnthropicMessagesProvider::new(transport, "key")
     ///     .with_version("2023-11-01");
@@ -99,9 +99,9 @@ impl AnthropicMessagesProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::anthropic_messages::AnthropicMessagesProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::anthropic_messages::AnthropicMessagesProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = AnthropicMessagesProvider::new(transport, "key")
     ///     .with_beta("beta1,beta2");
@@ -117,9 +117,9 @@ impl AnthropicMessagesProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::anthropic_messages::AnthropicMessagesProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::anthropic_messages::AnthropicMessagesProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = AnthropicMessagesProvider::new(transport, "key")
     ///     .with_default_model("claude-3-sonnet");

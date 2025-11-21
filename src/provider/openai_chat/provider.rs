@@ -39,9 +39,9 @@ impl OpenAiChatProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::openai_chat::OpenAiChatProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::openai_chat::OpenAiChatProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = OpenAiChatProvider::new(transport, "test-openai-key");
     /// assert_eq!(provider.name(), "openai_chat");
@@ -62,9 +62,9 @@ impl OpenAiChatProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::openai_chat::OpenAiChatProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::openai_chat::OpenAiChatProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = OpenAiChatProvider::new(transport, "key").with_base_url("https://openai-proxy.local");
     /// assert_eq!(provider.name(), "openai_chat");
@@ -79,9 +79,9 @@ impl OpenAiChatProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::openai_chat::OpenAiChatProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::openai_chat::OpenAiChatProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = OpenAiChatProvider::new(transport, "key").with_organization("org_123");
     /// assert_eq!(provider.name(), "openai_chat");
@@ -96,9 +96,9 @@ impl OpenAiChatProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::openai_chat::OpenAiChatProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::openai_chat::OpenAiChatProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = OpenAiChatProvider::new(transport, "key").with_project("proj_alpha");
     /// assert_eq!(provider.name(), "openai_chat");
@@ -113,9 +113,9 @@ impl OpenAiChatProvider {
     /// # Examples
     ///
     /// ```
-    /// # use kotoba::provider::openai_chat::OpenAiChatProvider;
-    /// # use kotoba::provider::LLMProvider;
-    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// # use kotoba_llm::provider::openai_chat::OpenAiChatProvider;
+    /// # use kotoba_llm::provider::LLMProvider;
+    /// # use kotoba_llm::http::reqwest::default_dyn_transport;
     /// let transport = default_dyn_transport().expect("transport");
     /// let provider = OpenAiChatProvider::new(transport, "key").with_default_model("gpt-4.1-mini");
     /// assert!(provider.capabilities().supports_stream);

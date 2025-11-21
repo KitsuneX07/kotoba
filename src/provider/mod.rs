@@ -27,9 +27,9 @@ pub trait LLMProvider: Send + Sync {
     ///
     /// ```
     /// # use async_trait::async_trait;
-    /// # use kotoba::provider::{LLMProvider, ChatStream};
-    /// # use kotoba::types::{ChatRequest, ChatResponse, CapabilityDescriptor};
-    /// # use kotoba::error::LLMError;
+    /// # use kotoba_llm::provider::{LLMProvider, ChatStream};
+    /// # use kotoba_llm::types::{ChatRequest, ChatResponse, CapabilityDescriptor};
+    /// # use kotoba_llm::error::LLMError;
     /// # use futures_util::stream;
     /// struct RejectingProvider;
     ///
@@ -58,9 +58,9 @@ pub trait LLMProvider: Send + Sync {
     ///
     /// ```
     /// # use async_trait::async_trait;
-    /// # use kotoba::provider::{LLMProvider, ChatStream};
-    /// # use kotoba::types::{ChatRequest, ChatResponse, CapabilityDescriptor};
-    /// # use kotoba::error::LLMError;
+    /// # use kotoba_llm::provider::{LLMProvider, ChatStream};
+    /// # use kotoba_llm::types::{ChatRequest, ChatResponse, CapabilityDescriptor};
+    /// # use kotoba_llm::error::LLMError;
     /// # use futures_util::stream;
     /// struct StreamingProvider;
     ///

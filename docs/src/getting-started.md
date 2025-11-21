@@ -6,7 +6,7 @@
 
 ```toml
 [dependencies]
-kotoba = { path = "../kotoba" }
+kotoba-llm = { path = "../kotoba" }
 ```
 
 ## 2. 构造 `LLMClient`
@@ -16,10 +16,10 @@ kotoba = { path = "../kotoba" }
 ```rust
 use std::sync::Arc;
 use futures_util::StreamExt;
-use kotoba::{LLMClient, LLMError};
-use kotoba::http::reqwest::default_dyn_transport;
-use kotoba::provider::openai_chat::OpenAiChatProvider;
-use kotoba::types::{ChatRequest, Message, Role, ContentPart, TextContent};
+use kotoba_llm::{LLMClient, LLMError};
+use kotoba_llm::http::reqwest::default_dyn_transport;
+use kotoba_llm::provider::openai_chat::OpenAiChatProvider;
+use kotoba_llm::types::{ChatRequest, Message, Role, ContentPart, TextContent};
 
 #[tokio::main]
 async fn main() -> Result<(), LLMError> {
@@ -71,12 +71,12 @@ async fn main() -> Result<(), LLMError> {
 若需要从配置文件或数据库批量注册 Provider，可使用 `config::build_client_from_configs`：
 
 ```rust
-use kotoba::config::{ModelConfig, ProviderKind, Credential, build_client_from_configs};
-use kotoba::types::{ChatRequest, Message, Role, ContentPart, TextContent};
-use kotoba::http::reqwest::default_dyn_transport;
+use kotoba_llm::config::{ModelConfig, ProviderKind, Credential, build_client_from_configs};
+use kotoba_llm::types::{ChatRequest, Message, Role, ContentPart, TextContent};
+use kotoba_llm::http::reqwest::default_dyn_transport;
 
 #[tokio::main]
-async fn main() -> Result<(), kotoba::LLMError> {
+async fn main() -> Result<(), kotoba_llm::LLMError> {
     let configs = vec![ModelConfig {
         handle: "claude".into(),
         provider: ProviderKind::AnthropicMessages,

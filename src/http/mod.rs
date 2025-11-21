@@ -38,7 +38,7 @@ impl HttpRequest {
     /// # Examples
     ///
     /// ```
-    /// use kotoba::http::{HttpMethod, HttpRequest};
+    /// use kotoba_llm::http::{HttpMethod, HttpRequest};
     ///
     /// let request = HttpRequest::post_json("https://example.com", br"{}".to_vec());
     /// assert_eq!(request.method, HttpMethod::Post);
@@ -63,7 +63,7 @@ impl HttpRequest {
     ///
     /// ```
     /// use std::collections::HashMap;
-    /// use kotoba::http::HttpRequest;
+    /// use kotoba_llm::http::HttpRequest;
     ///
     /// let request = HttpRequest::post_json("https://example.com", br"{}".to_vec())
     ///     .with_headers(HashMap::from([("Authorization".into(), "Bearer test".into())]));
@@ -92,7 +92,7 @@ impl HttpResponse {
     /// # Examples
     ///
     /// ```
-    /// use kotoba::http::HttpResponse;
+    /// use kotoba_llm::http::HttpResponse;
     ///
     /// let response = HttpResponse { status: 200, headers: Default::default(), body: b"ok".to_vec() };
     /// assert_eq!(response.into_string().unwrap(), "ok");
@@ -125,8 +125,8 @@ pub trait HttpTransport: Send + Sync {
     ///
     /// ```
     /// # use async_trait::async_trait;
-    /// # use kotoba::http::{HttpTransport, HttpRequest, HttpResponse, HttpStreamResponse, HttpBodyStream, HttpMethod};
-    /// # use kotoba::error::LLMError;
+    /// # use kotoba_llm::http::{HttpTransport, HttpRequest, HttpResponse, HttpStreamResponse, HttpBodyStream, HttpMethod};
+    /// # use kotoba_llm::error::LLMError;
     /// # use futures_util::stream;
     /// struct MemoryTransport;
     ///
@@ -162,8 +162,8 @@ pub trait HttpTransport: Send + Sync {
     ///
     /// ```
     /// # use async_trait::async_trait;
-    /// # use kotoba::http::{HttpTransport, HttpRequest, HttpResponse, HttpStreamResponse, HttpBodyStream};
-    /// # use kotoba::error::LLMError;
+    /// # use kotoba_llm::http::{HttpTransport, HttpRequest, HttpResponse, HttpStreamResponse, HttpBodyStream};
+    /// # use kotoba_llm::error::LLMError;
     /// # use futures_util::{stream, StreamExt};
     /// struct EchoTransport;
     ///
@@ -267,8 +267,8 @@ mod tests {
 /// ```
 /// # use std::collections::HashMap;
 /// # use async_trait::async_trait;
-/// # use kotoba::http::{post_json_with_headers, HttpTransport, HttpRequest, HttpResponse, HttpStreamResponse};
-/// # use kotoba::error::LLMError;
+/// # use kotoba_llm::http::{post_json_with_headers, HttpTransport, HttpRequest, HttpResponse, HttpStreamResponse};
+/// # use kotoba_llm::error::LLMError;
 /// # use futures_util::stream;
 /// # use serde_json::json;
 /// struct MockTransport;
@@ -326,8 +326,8 @@ pub async fn post_json_with_headers<T: Serialize>(
 /// ```
 /// # use std::collections::HashMap;
 /// # use async_trait::async_trait;
-/// # use kotoba::http::{post_json_stream_with_headers, HttpTransport, HttpRequest, HttpResponse, HttpStreamResponse, HttpBodyStream};
-/// # use kotoba::error::LLMError;
+/// # use kotoba_llm::http::{post_json_stream_with_headers, HttpTransport, HttpRequest, HttpResponse, HttpStreamResponse, HttpBodyStream};
+/// # use kotoba_llm::error::LLMError;
 /// # use futures_util::{stream, StreamExt};
 /// # use serde_json::json;
 /// struct StreamTransport;

@@ -19,8 +19,8 @@
 ## 构造方式
 
 ```rust
-use kotoba::provider::google_gemini::GoogleGeminiProvider;
-use kotoba::http::reqwest::default_dyn_transport;
+use kotoba_llm::provider::google_gemini::GoogleGeminiProvider;
+use kotoba_llm::http::reqwest::default_dyn_transport;
 
 let provider = GoogleGeminiProvider::new(default_dyn_transport()?, std::env::var("GEMINI_KEY")?)
     .with_base_url("https://generativelanguage.googleapis.com")
