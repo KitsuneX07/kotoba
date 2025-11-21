@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/kotoba.svg)](https://crates.io/crates/kotoba)
 [![Documentation](https://docs.rs/kotoba/badge.svg)](https://docs.rs/kotoba)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/KitsuneX07/kotoba/ci.yml)](https://github.com/KitsuneX07/kotoba/actions)
-[![License](https://img.shields.io/crates/l/kotoba.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 **kotoba** 是一个用于 Rust 的统一多厂商 LLM 调用抽象层。它通过一致的类型系统和 trait 抽象，抹平了 OpenAI、Anthropic、Google Gemini 等不同 Provider 之间的 API 差异，为构建 LLM 应用提供类型安全、可扩展的基础设施。
 
