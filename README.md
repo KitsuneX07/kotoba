@@ -39,7 +39,7 @@ kotoba = "0.1" # 请替换为最新版本
 tokio = { version = "1", features = ["full"] }
 ```
 
-## 🚀 快速开始
+## 快速开始
 
 下面的示例展示了如何初始化一个 OpenAI Provider 并发送流式对话请求。
 
