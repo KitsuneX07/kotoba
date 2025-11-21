@@ -1,0 +1,9 @@
+[book]
+authors = ["KitsuneX07"]
+description = "统一 LLM 调用层的中文文档"
+language = "zh-CN"
+src = "src"
+title = "kotoba 文档"
+
+[build]
+create-missing = false
