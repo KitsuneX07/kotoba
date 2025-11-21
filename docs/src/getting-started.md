@@ -2,11 +2,11 @@
 
 ## 1. 引入依赖
 
-在业务 crate 的 `Cargo.toml` 中通过 workspace path 或 git 指向本仓库：
+在业务 crate 的 `Cargo.toml` 中通过 crates.io 引入：
 
 ```toml
 [dependencies]
-kotoba-llm = { path = "../kotoba" }
+kotoba-llm = "0.1.0"
 ```
 
 ## 2. 构造 `LLMClient`
