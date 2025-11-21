@@ -9,6 +9,8 @@
 
 它旨在解决模型碎片化问题，提供统一的消息建模、客户端路由、错误处理与配置加载机制。
 
+[在线文档](https://kitsunex07.github.io/kotoba/)
+
 ## 核心特性
 
 - **统一类型系统 (Unified Type System)**
