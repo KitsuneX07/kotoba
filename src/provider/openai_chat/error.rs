@@ -99,7 +99,7 @@ mod tests {
             other => panic!("expected Provider error, got {other:?}"),
         }
 
-        // 非 JSON 或无法解析时，应该走兜底 Provider 分支
+        // Non-JSON or unparseable responses should fall back to the Provider branch.
         let body = "not a json";
         let err = parse_openai_error(500, body);
         match err {

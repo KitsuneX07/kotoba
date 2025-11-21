@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::error::LLMError;
 
-/// 解析 OpenAI Responses 接口的错误响应
+/// Parses error responses returned by the OpenAI Responses API.
 pub(crate) fn parse_openai_responses_error(status: u16, body: &str) -> LLMError {
     #[derive(Deserialize)]
     struct ErrorBody {
@@ -102,7 +102,7 @@ mod tests {
             other => panic!("expected Provider error, got {other:?}"),
         }
 
-        // 非 JSON 或无法解析时，应该走兜底 Provider 分支
+        // Non-JSON or malformed payloads should fall back to the Provider branch.
         let body = "not a json";
         let err = parse_openai_responses_error(500, body);
         match err {

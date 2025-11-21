@@ -6,11 +6,11 @@ use crate::types::{
     Message, ResponseFormat, TextContent, ToolChoice, ToolDefinition, ToolKind, VideoContent,
 };
 
-/// 构建 Google Gemini GenerateContent 请求体
+/// Builds a Google Gemini GenerateContent request body.
 ///
-/// 与 OpenAI Chat 不同，Gemini 使用路径参数携带模型名称：
-/// `POST /v1beta/models/{model}:generateContent`。
-/// 这里的 `model` 仅用于构造 URL，因此不会出现在 body 中。
+/// Unlike OpenAI Chat, Gemini encodes the model in the path:
+/// `POST /v1beta/models/{model}:generateContent`. The `model` parameter only affects the URL and
+/// therefore does not appear inside the JSON body.
 pub(crate) fn build_gemini_body(
     request: &ChatRequest,
     _model: &str,
@@ -18,7 +18,7 @@ pub(crate) fn build_gemini_body(
 ) -> Result<Value, LLMError> {
     let mut body = Map::new();
 
-    // 1. system / developer 折叠为 system_instruction，其余进入 contents
+    // 1. Fold system/developer roles into `system_instruction`; add the rest to `contents`.
     let mut system_texts = Vec::new();
     let mut contents = Vec::new();
     for message in &request.messages {
@@ -43,7 +43,7 @@ pub(crate) fn build_gemini_body(
     body.insert("contents".to_string(), Value::Array(contents));
 
     if !system_texts.is_empty() {
-        // Gemini 的 system_instruction 当前仅正式支持文本，这里将多条 system/dev 消息拼接为单条说明
+        // Gemini's `system_instruction` currently expects text, so concatenate system/dev messages.
         let system_text = system_texts.join("\n\n");
         body.insert(
             "system_instruction".to_string(),
@@ -54,12 +54,12 @@ pub(crate) fn build_gemini_body(
         );
     }
 
-    // 2. 采样与生成配置 -> generationConfig
+    // 2. Sampling and generation configuration → `generationConfig`.
     if let Some(gen_cfg) = build_generation_config(request)? {
         body.insert("generationConfig".to_string(), gen_cfg);
     }
 
-    // 3. 工具与 toolConfig
+    // 3. Tools and `toolConfig`.
     if !request.tools.is_empty() {
         body.insert(
             "tools".to_string(),
@@ -72,13 +72,13 @@ pub(crate) fn build_gemini_body(
         }
     }
 
-    // 4. metadata 直接映射
+    // 4. Pass metadata through verbatim.
     if let Some(metadata) = &request.metadata {
         let meta: Map<String, Value> = metadata.clone().into_iter().collect();
         body.insert("metadata".to_string(), Value::Object(meta));
     }
 
-    // 5. 额外 provider 配置（如 safetySettings、cachedContent 等），透传到顶层
+    // 5. Forward provider-specific extras (safetySettings, cachedContent, etc.).
     for (k, v) in &request.options.extra {
         body.insert(k.clone(), v.clone());
     }
@@ -86,11 +86,11 @@ pub(crate) fn build_gemini_body(
     Ok(Value::Object(body))
 }
 
-/// 将 Message 转换为 Gemini Content
+/// Converts a unified [`Message`] into Gemini `Content`.
 fn convert_message(message: &Message) -> Result<Value, LLMError> {
     let mut obj = Map::new();
 
-    // 统一将 assistant 映射为 Gemini 的 model，其它角色按原样透传
+    // Map assistant to Gemini's `model`; forward other roles as-is.
     let role = match message.role.0.as_str() {
         "assistant" => "model",
         other => other,
@@ -123,7 +123,7 @@ fn extract_text_from_message(message: &Message) -> Option<String> {
     }
 }
 
-/// 将通用 ContentPart 映射为 Gemini Part JSON
+/// Converts a unified [`ContentPart`] into Gemini `Part` JSON.
 fn convert_content_part(part: &ContentPart) -> Result<Value, LLMError> {
     match part {
         ContentPart::Text(TextContent { text }) => Ok(json!({ "text": text })),
@@ -215,11 +215,11 @@ fn convert_content_part(part: &ContentPart) -> Result<Value, LLMError> {
     }
 }
 
-/// 构造 generationConfig 字段
+/// Builds the `generationConfig` field.
 fn build_generation_config(request: &ChatRequest) -> Result<Option<Value>, LLMError> {
     let mut cfg: Option<Map<String, Value>> = None;
 
-    // 小工具：按需懒创建 generationConfig map
+    // Helper: lazily create the generationConfig map.
     fn ensure_map(cfg: &mut Option<Map<String, Value>>) -> &mut Map<String, Value> {
         if cfg.is_none() {
             *cfg = Some(Map::new());
@@ -227,7 +227,7 @@ fn build_generation_config(request: &ChatRequest) -> Result<Option<Value>, LLMEr
         cfg.as_mut().unwrap()
     }
 
-    // 采样相关参数
+    // Sampling parameters.
     if let Some(temperature) = request.options.temperature {
         ensure_map(&mut cfg).insert("temperature".to_string(), Value::from(temperature));
     }
@@ -244,11 +244,11 @@ fn build_generation_config(request: &ChatRequest) -> Result<Option<Value>, LLMEr
         ensure_map(&mut cfg).insert("frequencyPenalty".to_string(), Value::from(penalty));
     }
 
-    // 响应格式映射：统一通过 response_format 控制 JSON 模式 / JSON Schema
+    // Response format mapping driven by `response_format` (JSON mode / JSON Schema).
     if let Some(format) = &request.response_format {
         match format {
             ResponseFormat::Text => {
-                // 默认即为 text/plain，无需显式设置
+                // `text/plain` is the default; nothing to set.
             }
             ResponseFormat::JsonObject => {
                 ensure_map(&mut cfg).insert(
@@ -265,7 +265,7 @@ fn build_generation_config(request: &ChatRequest) -> Result<Option<Value>, LLMEr
                 map.insert("response_schema".to_string(), schema.clone());
             }
             ResponseFormat::Custom(value) => {
-                // Custom 视为完整的 generationConfig，调用方完全掌控字段
+                // Treat Custom as a full generationConfig where the caller controls every field.
                 return Ok(Some(value.clone()));
             }
         }
@@ -274,7 +274,7 @@ fn build_generation_config(request: &ChatRequest) -> Result<Option<Value>, LLMEr
     Ok(cfg.map(Value::Object))
 }
 
-/// 将抽象 ToolDefinition 映射为 Gemini tools 数组
+/// Maps [`ToolDefinition`] values into the Gemini `tools` array.
 fn convert_tools(tools: &[ToolDefinition]) -> Result<Vec<Value>, LLMError> {
     let mut result = Vec::new();
     for tool in tools {
@@ -288,7 +288,7 @@ fn convert_tools(tools: &[ToolDefinition]) -> Result<Vec<Value>, LLMError> {
                 if let Some(schema) = &tool.input_schema {
                     decl.insert("parameters".to_string(), schema.clone());
                 }
-                // 这里每个函数独立成为一个 Tool 条目，形式为 { "functionDeclarations": [ { .. } ] }
+                // Each function becomes its own tool entry: `{ "functionDeclarations": [ { .. } ] }`.
                 let mut tool_obj = Map::new();
                 tool_obj.insert(
                     "functionDeclarations".to_string(),
@@ -297,11 +297,11 @@ fn convert_tools(tools: &[ToolDefinition]) -> Result<Vec<Value>, LLMError> {
                 result.push(Value::Object(tool_obj));
             }
             ToolKind::Custom { name, config } => {
-                // Custom 视为调用方已经根据 Gemini 规范构造好的 tool 配置
+                // Custom assumes the caller already constructed a Gemini-compliant tool config.
                 if let Some(cfg) = config {
                     result.push(cfg.clone());
                 } else {
-                    // 简单兜底：封装一个带类型与名称的 tool
+                    // Minimal fallback: wrap a tool with a type and name.
                     result.push(json!({ "type": name, "name": tool.name }));
                 }
             }
@@ -343,7 +343,7 @@ mod tests {
         ChatOptions, ChatRequest, ContentPart, ImageDetail, ImageSource, Message, Role,
     };
 
-    /// 最简文本消息请求体
+    /// Builds the minimal text-only request body.
     #[test]
     fn build_body_with_basic_text_message() {
         let request = ChatRequest {
@@ -376,7 +376,7 @@ mod tests {
         assert_eq!(parts[0], json!({ "text": "hello" }));
     }
 
-    /// system / developer 折叠为 system_instruction，其余进入 contents
+    /// Verifies system/developer messages fold into `system_instruction`.
     #[test]
     fn system_and_developer_fold_into_system_instruction() {
         let request = ChatRequest {
@@ -385,7 +385,7 @@ mod tests {
                     role: Role::system(),
                     name: None,
                     content: vec![ContentPart::Text(TextContent {
-                        text: "你是一个有帮助的助手。".to_string(),
+                        text: "You are a helpful assistant.".to_string(),
                     })],
                     metadata: None,
                 },
@@ -393,7 +393,7 @@ mod tests {
                     role: Role("developer".to_string()),
                     name: None,
                     content: vec![ContentPart::Text(TextContent {
-                        text: "请用简体中文回答。".to_string(),
+                        text: "Please answer in English.".to_string(),
                     })],
                     metadata: None,
                 },
@@ -401,7 +401,7 @@ mod tests {
                     role: Role::user(),
                     name: None,
                     content: vec![ContentPart::Text(TextContent {
-                        text: "你好".to_string(),
+                        text: "Hello".to_string(),
                     })],
                     metadata: None,
                 },
@@ -422,8 +422,8 @@ mod tests {
             .expect("system_instruction.parts should be array");
         assert_eq!(parts.len(), 1);
         let text = parts[0]["text"].as_str().expect("text should be string");
-        assert!(text.contains("你是一个有帮助的助手。"));
-        assert!(text.contains("请用简体中文回答。"));
+        assert!(text.contains("You are a helpful assistant."));
+        assert!(text.contains("Please answer in English."));
 
         let contents = body["contents"]
             .as_array()
@@ -432,7 +432,7 @@ mod tests {
         assert_eq!(contents[0]["role"], json!("user"));
     }
 
-    /// 响应格式为 JSON Schema 时，生成 generationConfig.response_schema
+    /// Generates `generationConfig.response_schema` when JSON Schema output is requested.
     #[test]
     fn build_generation_config_with_json_schema() {
         let options = ChatOptions {
@@ -473,7 +473,7 @@ mod tests {
         let gen_cfg = body["generationConfig"]
             .as_object()
             .expect("generationConfig should be object");
-        // 浮点字段近似比较
+        // Compare floats approximately.
         let temperature = gen_cfg["temperature"].as_f64().unwrap();
         assert!((temperature - 0.5).abs() < 1e-6);
         let top_p = gen_cfg["topP"].as_f64().unwrap();
@@ -483,7 +483,7 @@ mod tests {
         assert_eq!(gen_cfg["response_schema"], schema);
     }
 
-    /// 图片内容映射
+    /// Validates image content mapping for inline data and file references.
     #[test]
     fn convert_image_content_to_inline_and_file_data() {
         let img_inline = ContentPart::Image(ImageContent {

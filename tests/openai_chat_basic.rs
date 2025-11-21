@@ -33,7 +33,7 @@ async fn openai_chat_basic_text_dialog_live() {
                 role: Role("developer".to_string()),
                 name: None,
                 content: vec![ContentPart::Text(TextContent {
-                    text: "你是一个有帮助的助手。".to_string(),
+                    text: "You are a helpful assistant.".to_string(),
                 })],
                 metadata: None,
             },
@@ -41,7 +41,7 @@ async fn openai_chat_basic_text_dialog_live() {
                 role: Role::user(),
                 name: None,
                 content: vec![ContentPart::Text(TextContent {
-                    text: "你好！".to_string(),
+                    text: "Hello there!".to_string(),
                 })],
                 metadata: None,
             },
@@ -56,15 +56,15 @@ async fn openai_chat_basic_text_dialog_live() {
     let response = provider
         .chat(request)
         .await
-        .expect("基础文本对话请求应成功");
-    let text = first_text_output(&response).expect("助手应返回文本内容");
+        .expect("OpenAI Chat text dialog request should succeed");
+    let text = first_text_output(&response).expect("assistant should return text content");
     assert!(
-        text.contains("我"),
-        "为了降低不确定性，回答需要包含“我”，实际为：{text}"
+        text.contains("I"),
+        "response must contain 'I' to reduce ambiguity; actual: {text}"
     );
     assert!(
         matches!(response.finish_reason, Some(FinishReason::Stop)),
-        "简单问答应以 stop 结束"
+        "simple Q&A should end with Stop"
     );
 }
 
@@ -82,7 +82,7 @@ async fn openai_chat_basic_image_understanding_dialog_live() {
         ..ChatOptions::default()
     };
 
-    // 读取本地测试图片并编码为 base64，走 data URL 通道
+    // Read the local fixture and encode it as base64 to build a data URL.
     let image_bytes = fs::read("tests/assets/Gfp-wisconsin-madison-the-nature-boardwalk.jpg")
         .expect("test image should be readable");
     let image_b64 = general_purpose::STANDARD.encode(&image_bytes);
@@ -93,7 +93,7 @@ async fn openai_chat_basic_image_understanding_dialog_live() {
             name: None,
             content: vec![
                 ContentPart::Text(TextContent {
-                    text: "这张图片里有什么？".to_string(),
+                    text: "What is in this picture?".to_string(),
                 }),
                 ContentPart::Image(ImageContent {
                     source: ImageSource::Base64 {
@@ -113,15 +113,18 @@ async fn openai_chat_basic_image_understanding_dialog_live() {
         metadata: None,
     };
 
-    let response = provider.chat(request).await.expect("图像理解请求应成功");
-    let text = first_text_output(&response).expect("助手应描述图像内容");
+    let response = provider
+        .chat(request)
+        .await
+        .expect("image-understanding request should succeed");
+    let text = first_text_output(&response).expect("assistant should describe the image");
     assert!(
-        text.contains("草"),
-        "回答需包含“草”方便匹配，实际为：{text}"
+        text.contains("grass"),
+        "response must mention grass; actual: {text}"
     );
     assert!(
         matches!(response.finish_reason, Some(FinishReason::Stop)),
-        "图像描述通常以 stop 结束"
+        "image descriptions should usually end with Stop"
     );
 }
 
@@ -143,20 +146,22 @@ async fn openai_chat_basic_tool_call_dialog_live() {
             role: Role::user(),
             name: None,
             content: vec![ContentPart::Text(TextContent {
-                text: "波士顿今天的天气怎么样？请调用 get_current_weather 工具，并在工具参数中使用 Boston, MA。".to_string(),
+                text:
+                    "What is the weather in Boston today? Call get_current_weather with Boston, MA."
+                        .to_string(),
             })],
             metadata: None,
         }],
         options,
         tools: vec![ToolDefinition {
             name: "get_current_weather".to_string(),
-            description: Some("获取指定位置的当前天气".to_string()),
+            description: Some("Get the current weather for the specified location".to_string()),
             input_schema: Some(json!({
                 "type": "object",
                 "properties": {
                     "location": {
                         "type": "string",
-                        "description": "城市和州，例如 San Francisco, CA"
+                        "description": "City and state, e.g., San Francisco, CA"
                     },
                     "unit": {
                         "type": "string",
@@ -175,7 +180,10 @@ async fn openai_chat_basic_tool_call_dialog_live() {
         metadata: None,
     };
 
-    let response = provider.chat(request).await.expect("工具调用应成功");
+    let response = provider
+        .chat(request)
+        .await
+        .expect("tool-call request should succeed");
     let tool_call = response.outputs.iter().find_map(|item| {
         if let OutputItem::ToolCall { call, .. } = item {
             Some(call)
@@ -183,8 +191,11 @@ async fn openai_chat_basic_tool_call_dialog_live() {
             None
         }
     });
-    assert!(tool_call.is_some(), "模型响应中必须包含工具调用");
-    let tool_call = tool_call.expect("已在上方保证存在工具调用");
+    assert!(
+        tool_call.is_some(),
+        "model response must include a tool call"
+    );
+    let tool_call = tool_call.expect("tool call should exist per assertion above");
     let location = tool_call
         .arguments
         .get("location")
@@ -192,7 +203,7 @@ async fn openai_chat_basic_tool_call_dialog_live() {
         .unwrap_or_default();
     assert!(
         location.contains("Boston"),
-        "工具参数应包含 Boston, MA，实际为：{location}"
+        "tool argument should contain Boston, MA; actual: {location}"
     );
 }
 

@@ -31,7 +31,7 @@ pub(crate) fn map_response(
         }
     }
 
-    // 如果有非工具内容，则构造一条完整的 assistant 消息
+    // When non-tool content exists, build a full assistant message.
     if !message_parts.is_empty() {
         outputs.push(OutputItem::Message {
             message: Message {
@@ -84,7 +84,7 @@ fn convert_content_block(block: &AnthropicContentBlock) -> Result<ConvertedBlock
                     convert_image_source(source),
                 )))
             } else {
-                // 缺少 source 时当作原始数据透传
+                // Without a source, treat the payload as raw data for passthrough.
                 let value = serde_json::to_value(block).unwrap_or_else(|_| json!({}));
                 Ok(ConvertedBlock::MessagePart(ContentPart::Data {
                     data: value,
@@ -99,11 +99,11 @@ fn convert_content_block(block: &AnthropicContentBlock) -> Result<ConvertedBlock
                 id,
                 name,
                 arguments: input,
-                // Anthropic 工具调用本质上也是函数调用，这里统一视为 Function
+                // Anthropic tool calls are effectively function calls, so treat them uniformly.
                 kind: ToolCallKind::Function,
             }))
         }
-        // 工具结果和文档等暂时作为 Data 透传，便于上层按需解析
+        // Tool results and documents are forwarded as Data to let callers parse them.
         "tool_result" | "document" => {
             let value = serde_json::to_value(block).unwrap_or_else(|_| json!({}));
             Ok(ConvertedBlock::MessagePart(ContentPart::Data {
@@ -125,7 +125,7 @@ fn convert_image_source(source: &AnthropicImageSource) -> ImageContent {
             data: source.data.clone(),
             mime_type: Some(source.media_type.clone()),
         },
-        // Anthropic 当前未公开 detail 选项，这里保守置为 None
+        // Anthropic does not expose detail options yet, so default to None.
         detail: None,
         metadata: None,
     }
@@ -179,7 +179,7 @@ mod tests {
             role: "assistant".to_string(),
             content: vec![AnthropicContentBlock {
                 kind: "text".to_string(),
-                text: Some("你好，我是 Claude。".to_string()),
+                text: Some("Hello, I am Claude.".to_string()),
                 id: None,
                 name: None,
                 input: None,
@@ -226,7 +226,7 @@ mod tests {
                 assert_eq!(message.content.len(), 1);
                 match &message.content[0] {
                     ContentPart::Text(TextContent { text }) => {
-                        assert_eq!(text, "你好，我是 Claude。");
+                        assert_eq!(text, "Hello, I am Claude.");
                     }
                     other => panic!("unexpected content part: {other:?}"),
                 }
@@ -255,7 +255,7 @@ mod tests {
                 text: None,
                 id: Some("toolu_1".to_string()),
                 name: Some("get_weather".to_string()),
-                input: Some(json!({ "location": "北京" })),
+                input: Some(json!({ "location": "Beijing" })),
                 tool_use_id: None,
                 content: None,
                 source: None,
@@ -276,7 +276,7 @@ mod tests {
                 assert_eq!(*index, 0);
                 assert_eq!(call.id.as_deref(), Some("toolu_1"));
                 assert_eq!(call.name, "get_weather");
-                assert_eq!(call.arguments["location"], json!("北京"));
+                assert_eq!(call.arguments["location"], json!("Beijing"));
                 assert!(matches!(call.kind, ToolCallKind::Function));
             }
             other => panic!("unexpected output item: {other:?}"),

@@ -20,7 +20,10 @@ use super::types::OpenAiResponsesResponse;
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com";
 
-/// OpenAI Responses Provider
+/// OpenAI Responses provider implementation.
+///
+/// Translates [`ChatRequest`] structures into OpenAI Responses payloads and handles both
+/// synchronous and streaming flows, including tool invocation support.
 pub struct OpenAiResponsesProvider {
     pub(crate) transport: DynHttpTransport,
     pub(crate) base_url: String,
@@ -31,7 +34,18 @@ pub struct OpenAiResponsesProvider {
 }
 
 impl OpenAiResponsesProvider {
-    /// 创建带默认 base_url 的 Provider
+    /// Creates a provider targeting the default `https://api.openai.com` endpoint.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::openai_responses::OpenAiResponsesProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = OpenAiResponsesProvider::new(transport, "key");
+    /// assert_eq!(provider.name(), "openai_responses");
+    /// ```
     pub fn new(transport: DynHttpTransport, api_key: impl Into<String>) -> Self {
         Self {
             transport,
@@ -43,25 +57,71 @@ impl OpenAiResponsesProvider {
         }
     }
 
-    /// 自定义 base_url
+    /// Overrides the base URL, useful for proxies or gateways.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::openai_responses::OpenAiResponsesProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = OpenAiResponsesProvider::new(transport, "key")
+    ///     .with_base_url("https://proxy.local");
+    /// assert_eq!(provider.name(), "openai_responses");
+    /// ```
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
         self
     }
 
-    /// 配置组织 ID
+    /// Sets the optional `OpenAI-Organization` header.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::openai_responses::OpenAiResponsesProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = OpenAiResponsesProvider::new(transport, "key").with_organization("org_123");
+    /// assert_eq!(provider.name(), "openai_responses");
+    /// ```
     pub fn with_organization(mut self, organization: impl Into<String>) -> Self {
         self.organization = Some(organization.into());
         self
     }
 
-    /// 配置项目 ID
+    /// Sets the optional `OpenAI-Project` header.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::openai_responses::OpenAiResponsesProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = OpenAiResponsesProvider::new(transport, "key").with_project("proj_alpha");
+    /// assert_eq!(provider.name(), "openai_responses");
+    /// ```
     pub fn with_project(mut self, project: impl Into<String>) -> Self {
         self.project = Some(project.into());
         self
     }
 
-    /// 设置默认模型
+    /// Configures a default model when requests omit one.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::openai_responses::OpenAiResponsesProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = OpenAiResponsesProvider::new(transport, "key")
+    ///     .with_default_model("gpt-4.1-mini");
+    /// assert_eq!(provider.name(), "openai_responses");
+    /// ```
     pub fn with_default_model(mut self, model: impl Into<String>) -> Self {
         self.default_model = Some(model.into());
         self
@@ -171,7 +231,8 @@ impl LLMProvider for OpenAiResponsesProvider {
         CapabilityDescriptor {
             supports_stream: true,
             supports_image_input: true,
-            // 当前文档未完全覆盖音频 / 视频输入在 Responses 中的能力，这里暂时保守为 false
+            // Audio and video input coverage is not fully documented in Responses yet,
+            // so these flags stay conservative for now.
             supports_audio_input: false,
             supports_video_input: false,
             supports_tools: true,

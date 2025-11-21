@@ -14,7 +14,7 @@ use kotoba::types::{
 use kotoba::{LLMProvider, OutputItem};
 use serde_json::json;
 
-/// Anthropic Messages 基础文本对话联通性测试
+/// Connectivity test for basic Anthropic Messages text conversations.
 #[tokio::test]
 #[ignore = "requires valid Anthropic Messages endpoint"]
 async fn anthropic_messages_basic_text_dialog_live() {
@@ -25,7 +25,7 @@ async fn anthropic_messages_basic_text_dialog_live() {
 
     let options = ChatOptions {
         model: Some(model.clone()),
-        // Anthropic Messages 必须提供 max_tokens
+        // Anthropic Messages requires `max_tokens`.
         max_output_tokens: Some(256),
         ..ChatOptions::default()
     };
@@ -36,7 +36,7 @@ async fn anthropic_messages_basic_text_dialog_live() {
                 role: Role("developer".to_string()),
                 name: None,
                 content: vec![ContentPart::Text(TextContent {
-                    text: "你是一个有帮助的助手，请使用简体中文回答。".to_string(),
+                    text: "You are a helpful assistant. Respond in English.".to_string(),
                 })],
                 metadata: None,
             },
@@ -44,7 +44,7 @@ async fn anthropic_messages_basic_text_dialog_live() {
                 role: Role::user(),
                 name: None,
                 content: vec![ContentPart::Text(TextContent {
-                    text: "简单自我介绍一下你自己。".to_string(),
+                    text: "Please introduce yourself briefly.".to_string(),
                 })],
                 metadata: None,
             },
@@ -59,19 +59,19 @@ async fn anthropic_messages_basic_text_dialog_live() {
     let response = provider
         .chat(request)
         .await
-        .expect("Anthropic 基础文本对话请求应成功");
-    let text = first_text_output(&response).expect("助手应返回文本内容");
+        .expect("Anthropic text dialog request should succeed");
+    let text = first_text_output(&response).expect("assistant should return text content");
     assert!(
-        text.contains('我'),
-        "为了降低不确定性，回答需要包含“我”，实际为：{text}"
+        text.contains('I'),
+        "response must contain 'I' to reduce ambiguity; actual text: {text}"
     );
     assert!(
         matches!(response.finish_reason, Some(FinishReason::Stop)),
-        "简单问答通常应以 end_turn/Stop 结束"
+        "simple Q&A should end with Stop"
     );
 }
 
-/// Anthropic Messages 图像理解联通性测试
+/// Connectivity test for Anthropic Messages image understanding.
 #[tokio::test]
 #[ignore = "requires valid Anthropic Messages endpoint"]
 async fn anthropic_messages_basic_image_understanding_dialog_live() {
@@ -86,7 +86,7 @@ async fn anthropic_messages_basic_image_understanding_dialog_live() {
         ..ChatOptions::default()
     };
 
-    // 读取本地测试图片并编码为 base64
+    // Read the local fixture and encode it as base64.
     let image_bytes = fs::read("tests/assets/Gfp-wisconsin-madison-the-nature-boardwalk.jpg")
         .expect("test image should be readable");
     let image_b64 = general_purpose::STANDARD.encode(&image_bytes);
@@ -97,7 +97,8 @@ async fn anthropic_messages_basic_image_understanding_dialog_live() {
             name: None,
             content: vec![
                 ContentPart::Text(TextContent {
-                    text: "这张图片里有什么？请用简体中文简要描述。".to_string(),
+                    text: "What is shown in this picture? Provide a brief English description."
+                        .to_string(),
                 }),
                 ContentPart::Image(ImageContent {
                     source: ImageSource::Base64 {
@@ -120,19 +121,19 @@ async fn anthropic_messages_basic_image_understanding_dialog_live() {
     let response = provider
         .chat(request)
         .await
-        .expect("Anthropic 图像理解请求应成功");
-    let text = first_text_output(&response).expect("助手应描述图像内容");
+        .expect("Anthropic image-understanding request should succeed");
+    let text = first_text_output(&response).expect("assistant should describe the image");
     assert!(
-        text.contains('草'),
-        "回答需包含“草”方便匹配，实际为：{text}"
+        text.contains("grass"),
+        "response must mention grass; actual: {text}"
     );
     assert!(
         matches!(response.finish_reason, Some(FinishReason::Stop)),
-        "图像描述通常以 end_turn/Stop 结束"
+        "image descriptions should typically end with Stop"
     );
 }
 
-/// Anthropic Messages 工具调用联通性测试
+/// Connectivity test for Anthropic Messages tool calls.
 #[tokio::test]
 #[ignore = "requires valid Anthropic Messages endpoint"]
 async fn anthropic_messages_basic_tool_call_dialog_live() {
@@ -152,7 +153,7 @@ async fn anthropic_messages_basic_tool_call_dialog_live() {
             role: Role::user(),
             name: None,
             content: vec![ContentPart::Text(TextContent {
-                text: "今天北京的天气怎么样？请调用 get_weather 工具，并在参数中使用 location=\"北京\"。"
+                text: "What is the weather in Beijing today? Call get_weather with location=\"Beijing\"."
                     .to_string(),
             })],
             metadata: None,
@@ -160,13 +161,13 @@ async fn anthropic_messages_basic_tool_call_dialog_live() {
         options,
         tools: vec![ToolDefinition {
             name: "get_weather".to_string(),
-            description: Some("获取指定位置的当前天气".to_string()),
+            description: Some("Get current weather for the specified location".to_string()),
             input_schema: Some(json!({
                 "type": "object",
                 "properties": {
                     "location": {
                         "type": "string",
-                        "description": "城市名称,如:北京"
+                        "description": "City name, e.g., Beijing"
                     }
                 },
                 "required": ["location"]
@@ -183,14 +184,14 @@ async fn anthropic_messages_basic_tool_call_dialog_live() {
 
     let response = match provider.chat(request).await {
         Ok(resp) => resp,
-        // 工具调用在部分兼容层上可能触发 tool_call_error，这里视为测试条件不满足而非失败
+        // Some compatibility layers emit tool_call_error; skip the test when that happens.
         Err(kotoba::LLMError::Provider { message, .. }) if message.contains("tool_call_error") => {
             eprintln!(
                 "skip anthropic_messages_basic_tool_call_dialog_live: tool_call_error: {message}"
             );
             return;
         }
-        Err(other) => panic!("Anthropic 工具调用请求应成功: {other:?}"),
+        Err(other) => panic!("Anthropic tool-call request should succeed: {other:?}"),
     };
     let tool_call = response.outputs.iter().find_map(|item| {
         if let OutputItem::ToolCall { call, .. } = item {
@@ -201,9 +202,9 @@ async fn anthropic_messages_basic_tool_call_dialog_live() {
     });
     assert!(
         tool_call.is_some(),
-        "模型响应中必须包含工具调用（tool_use 内容块）"
+        "model response must contain a tool call (tool_use content block)"
     );
-    let tool_call = tool_call.expect("已在上方保证存在工具调用");
+    let tool_call = tool_call.expect("tool call should exist per assertion above");
     assert_eq!(tool_call.name, "get_weather");
     let location = tool_call
         .arguments
@@ -211,16 +212,16 @@ async fn anthropic_messages_basic_tool_call_dialog_live() {
         .and_then(|value| value.as_str())
         .unwrap_or_default();
     assert!(
-        location.contains("北京"),
-        "工具参数 location 应包含“北京”，实际为：{location}"
+        location.contains("Beijing"),
+        "tool argument location must contain 'Beijing'; actual: {location}"
     );
     assert!(
         matches!(response.finish_reason, Some(FinishReason::ToolCalls)),
-        "工具调用场景 stop_reason 应映射为 ToolCalls"
+        "tool-call scenarios should map stop_reason to ToolCalls"
     );
 }
 
-/// Anthropic Messages 流式对话联通性测试
+/// Connectivity test that covers both synchronous and streaming Anthropic calls.
 #[tokio::test]
 #[ignore = "requires valid Anthropic Messages endpoint"]
 async fn anthropic_messages_live_sync_and_stream() {
@@ -231,17 +232,17 @@ async fn anthropic_messages_live_sync_and_stream() {
 
     let request = build_stream_request(&model);
 
-    // 先校验非流式调用正常
+    // Validate the non-streaming request first.
     let response = provider
         .chat(request.clone())
         .await
-        .expect("Anthropic 同步调用应成功");
+        .expect("Anthropic synchronous call should succeed");
     assert!(
         !response.outputs.is_empty(),
         "chat response should contain outputs"
     );
 
-    // 再测试流式接口
+    // Then test streaming responses.
     let mut stream = provider
         .stream_chat(request)
         .await

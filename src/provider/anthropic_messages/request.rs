@@ -6,7 +6,7 @@ use crate::types::{
     ToolChoice, ToolDefinition, ToolKind, ToolResult,
 };
 
-/// 构建 Anthropic Messages 请求体
+/// Builds the request body for Anthropic Messages.
 pub(crate) fn build_anthropic_body(
     request: &ChatRequest,
     model: &str,
@@ -15,7 +15,7 @@ pub(crate) fn build_anthropic_body(
     let mut body = Map::new();
     body.insert("model".to_string(), Value::String(model.to_string()));
 
-    // 1. system / developer 折叠为顶层 system，其余进入 messages
+    // 1. Fold system/developer roles into the top-level `system`; push others into `messages`.
     let mut system_texts = Vec::new();
     let mut messages = Vec::new();
     for message in &request.messages {
@@ -44,7 +44,7 @@ pub(crate) fn build_anthropic_body(
         body.insert("system".to_string(), Value::String(system));
     }
 
-    // 2. 采样与生成控制参数
+    // 2. Sampling and generation controls.
     if let Some(max_tokens) = request.options.max_output_tokens {
         body.insert("max_tokens".to_string(), Value::from(max_tokens));
     } else {
@@ -61,14 +61,14 @@ pub(crate) fn build_anthropic_body(
         body.insert("top_p".to_string(), Value::from(top_p));
     }
 
-    // 3. thinking / reasoning 配置
+    // 3. Thinking/reasoning configuration.
     if let Some(reasoning) = &request.options.reasoning {
         if let Some(obj) = build_thinking(reasoning)? {
             body.insert("thinking".to_string(), obj);
         }
     }
 
-    // 4. tools 与 tool_choice
+    // 4. Tool definitions and tool_choice configuration.
     if !request.tools.is_empty() {
         body.insert(
             "tools".to_string(),
@@ -83,13 +83,13 @@ pub(crate) fn build_anthropic_body(
         }
     }
 
-    // 5. metadata 直接映射
+    // 5. Metadata passthrough.
     if let Some(metadata) = &request.metadata {
         let meta: Map<String, Value> = metadata.clone().into_iter().collect();
         body.insert("metadata".to_string(), Value::Object(meta));
     }
 
-    // 6. 透传额外 provider 配置，例如 stop_sequences 等
+    // 6. Provider-specific extras such as `stop_sequences`.
     for (k, v) in &request.options.extra {
         body.insert(k.clone(), v.clone());
     }
@@ -119,7 +119,7 @@ fn extract_text_from_message(message: &Message) -> Option<String> {
 fn convert_message(message: &Message) -> Result<Value, LLMError> {
     let mut obj = Map::new();
 
-    // Anthropic 仅支持 user / assistant 角色，其它角色保守降级为 user
+    // Anthropic only supports `user` and `assistant`; fall back to `user` otherwise.
     let role = match message.role.0.as_str() {
         "assistant" => "assistant",
         _ => "user",
@@ -183,7 +183,7 @@ fn convert_content_part(part: &ContentPart) -> Result<Value, LLMError> {
                 "is_error": is_error
             }))
         }
-        // 其它多模态或工具调用暂时不直接支持，交给上层通过 Data 自定义
+        // Other multimodal inputs or tool calls are not handled directly; let callers use Data.
         ContentPart::Audio(_)
         | ContentPart::Video(_)
         | ContentPart::File(_)
@@ -195,7 +195,7 @@ fn convert_content_part(part: &ContentPart) -> Result<Value, LLMError> {
 }
 
 fn build_thinking(reasoning: &ReasoningOptions) -> Result<Option<Value>, LLMError> {
-    // 若调用方在 extra 中已经构造完整 thinking 配置，则直接透传
+    // If the caller already provides a full thinking payload via `extra`, forward it.
     if let Some(explicit) = reasoning.extra.get("thinking") {
         return Ok(Some(explicit.clone()));
     }
@@ -266,8 +266,7 @@ fn convert_tool_choice(
             "name": name,
             "disable_parallel_tool_use": disable_parallel_tool_use
         }))),
-        // Anthropic Messages 当前未提供显式 "none" 选项，这里选择不设置 tool_choice，
-        // 调用方若希望完全禁用工具，应直接不提供 tools。
+        // Anthropic Messages lacks an explicit "none" option; omit `tool_choice` to disable tools.
         ToolChoice::None => Ok(None),
         ToolChoice::Custom(value) => Ok(Some(value.clone())),
     }
@@ -278,7 +277,7 @@ mod tests {
     use super::*;
     use crate::types::{ChatOptions, ContentPart, Role};
 
-    /// 最简文本消息请求体
+    /// Builds a minimal text-only request body.
     #[test]
     fn build_body_with_basic_text_message() {
         let request = ChatRequest {
@@ -325,7 +324,7 @@ mod tests {
         );
     }
 
-    /// system / developer 折叠为 system
+    /// Ensures system and developer roles fold into the `system` field.
     #[test]
     fn fold_system_and_developer_into_system_field() {
         let request = ChatRequest {
@@ -334,7 +333,7 @@ mod tests {
                     role: Role::system(),
                     name: None,
                     content: vec![ContentPart::Text(TextContent {
-                        text: "你是一个有帮助的助手。".to_string(),
+                        text: "You are a helpful assistant.".to_string(),
                     })],
                     metadata: None,
                 },
@@ -342,7 +341,7 @@ mod tests {
                     role: Role("developer".to_string()),
                     name: None,
                     content: vec![ContentPart::Text(TextContent {
-                        text: "请用简体中文回答。".to_string(),
+                        text: "Please answer in English.".to_string(),
                     })],
                     metadata: None,
                 },
@@ -350,7 +349,7 @@ mod tests {
                     role: Role::user(),
                     name: None,
                     content: vec![ContentPart::Text(TextContent {
-                        text: "你好！".to_string(),
+                        text: "Hello!".to_string(),
                     })],
                     metadata: None,
                 },
@@ -369,8 +368,8 @@ mod tests {
             build_anthropic_body(&request, "claude-3-5-sonnet-20241022", false).expect("build");
 
         let system = body["system"].as_str().expect("system should be string");
-        assert!(system.contains("你是一个有帮助的助手。"));
-        assert!(system.contains("请用简体中文回答。"));
+        assert!(system.contains("You are a helpful assistant."));
+        assert!(system.contains("Please answer in English."));
 
         let messages = body["messages"]
             .as_array()

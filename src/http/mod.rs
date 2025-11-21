@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use crate::error::LLMError;
 
-/// HTTP 方法枚举
+/// Enumerates HTTP methods understood by the lightweight transport abstraction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HttpMethod {
     Get,
@@ -19,7 +19,7 @@ pub enum HttpMethod {
     Delete,
 }
 
-/// HTTP 请求
+/// Minimal HTTP request representation shared across providers.
 #[derive(Debug, Clone)]
 pub struct HttpRequest {
     pub method: HttpMethod,
@@ -30,7 +30,20 @@ pub struct HttpRequest {
 }
 
 impl HttpRequest {
-    /// 构建 JSON POST 请求
+    /// Builds a POST request with a JSON request body.
+    ///
+    /// The helper sets the `Content-Type` header to `application/json` and stores the
+    /// provided buffer as the body, making it ideal for serialized payloads.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kotoba::http::{HttpMethod, HttpRequest};
+    ///
+    /// let request = HttpRequest::post_json("https://example.com", br"{}".to_vec());
+    /// assert_eq!(request.method, HttpMethod::Post);
+    /// assert_eq!(request.headers.get("Content-Type"), Some(&"application/json".to_string()));
+    /// ```
     pub fn post_json(url: impl Into<String>, body: Vec<u8>) -> Self {
         Self {
             method: HttpMethod::Post,
@@ -41,14 +54,28 @@ impl HttpRequest {
         }
     }
 
-    /// 替换请求头 便于在构造后统一设置 Provider 定制 header
+    /// Overrides the request headers after construction.
+    ///
+    /// This is useful when providers need to stamp additional headers or replace
+    /// authorization metadata before dispatching the request.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::collections::HashMap;
+    /// use kotoba::http::HttpRequest;
+    ///
+    /// let request = HttpRequest::post_json("https://example.com", br"{}".to_vec())
+    ///     .with_headers(HashMap::from([("Authorization".into(), "Bearer test".into())]));
+    /// assert_eq!(request.headers.get("Authorization"), Some(&"Bearer test".to_string()));
+    /// ```
     pub fn with_headers(mut self, headers: HashMap<String, String>) -> Self {
         self.headers = headers;
         self
     }
 }
 
-/// HTTP 响应
+/// Minimal HTTP response representation.
 #[derive(Debug, Clone)]
 pub struct HttpResponse {
     pub status: u16,
@@ -57,33 +84,119 @@ pub struct HttpResponse {
 }
 
 impl HttpResponse {
-    /// 将响应体转换为 UTF-8 字符串
+    /// Converts the body into a UTF-8 string.
+    ///
+    /// The method consumes the response and returns the decoded string or a
+    /// [`LLMError::Transport`] if the payload contains invalid UTF-8.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kotoba::http::HttpResponse;
+    ///
+    /// let response = HttpResponse { status: 200, headers: Default::default(), body: b"ok".to_vec() };
+    /// assert_eq!(response.into_string().unwrap(), "ok");
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LLMError::Transport`] when the body cannot be interpreted as UTF-8.
     pub fn into_string(self) -> Result<String, LLMError> {
         String::from_utf8(self.body).map_err(|err| LLMError::transport(err.to_string()))
     }
 }
 
-/// HTTP 流式响应
+/// HTTP response that carries a streaming body.
 pub struct HttpStreamResponse {
     pub status: u16,
     pub headers: HashMap<String, String>,
     pub body: HttpBodyStream,
 }
 
-/// 流式响应体
+/// Alias for the body stream returned by [`HttpTransport::send_stream`].
 pub type HttpBodyStream = Pin<Box<dyn Stream<Item = Result<Vec<u8>, LLMError>> + Send>>;
 
-/// 抽象的 HTTP 传输层 便于在测试中注入 Mock
+/// Transport abstraction used to decouple providers from the concrete HTTP client.
 #[async_trait]
 pub trait HttpTransport: Send + Sync {
-    /// 发送请求并返回响应
+    /// Sends a request and resolves when the full response is available.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use async_trait::async_trait;
+    /// # use kotoba::http::{HttpTransport, HttpRequest, HttpResponse, HttpStreamResponse, HttpBodyStream, HttpMethod};
+    /// # use kotoba::error::LLMError;
+    /// # use futures_util::stream;
+    /// struct MemoryTransport;
+    ///
+    /// #[async_trait]
+    /// impl HttpTransport for MemoryTransport {
+    ///     async fn send(&self, request: HttpRequest) -> Result<HttpResponse, LLMError> {
+    ///         Ok(HttpResponse { status: 200, headers: request.headers, body: b"ok".to_vec() })
+    ///     }
+    ///     async fn send_stream(&self, request: HttpRequest) -> Result<HttpStreamResponse, LLMError> {
+    ///         Ok(HttpStreamResponse { status: 200, headers: request.headers, body: Box::pin(stream::empty()) })
+    ///     }
+    /// }
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let transport = MemoryTransport;
+    /// let response = transport
+    ///     .send(HttpRequest::post_json("https://example.com", br"{}".to_vec()))
+    ///     .await
+    ///     .unwrap();
+    /// assert_eq!(response.status, 200);
+    /// # });
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Implementations should map transport failures to [`LLMError::Transport`] and other
+    /// issues to the appropriate [`LLMError`] variant.
     async fn send(&self, request: HttpRequest) -> Result<HttpResponse, LLMError>;
 
-    /// 以流式方式发送请求并持续接收响应体
+    /// Sends a request and returns a streaming body.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use async_trait::async_trait;
+    /// # use kotoba::http::{HttpTransport, HttpRequest, HttpResponse, HttpStreamResponse, HttpBodyStream};
+    /// # use kotoba::error::LLMError;
+    /// # use futures_util::{stream, StreamExt};
+    /// struct EchoTransport;
+    ///
+    /// #[async_trait]
+    /// impl HttpTransport for EchoTransport {
+    ///     async fn send(&self, request: HttpRequest) -> Result<HttpResponse, LLMError> {
+    ///         Ok(HttpResponse { status: 200, headers: request.headers, body: request.body.unwrap_or_default() })
+    ///     }
+    ///     async fn send_stream(&self, request: HttpRequest) -> Result<HttpStreamResponse, LLMError> {
+    ///         let stream = stream::once(async move { Ok(request.body.unwrap_or_default()) });
+    ///         Ok(HttpStreamResponse { status: 200, headers: request.headers, body: Box::pin(stream) })
+    ///     }
+    /// }
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let transport = EchoTransport;
+    /// let stream = transport
+    ///     .send_stream(HttpRequest::post_json("https://example.com", br"{}".to_vec()))
+    ///     .await
+    ///     .unwrap();
+    /// let chunks: Vec<_> = stream.body.collect::<Vec<_>>().await;
+    /// assert_eq!(chunks.len(), 1);
+    /// # });
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Implementations should return [`LLMError::Transport`] for network failures or
+    /// propagate provider-specific errors otherwise.
     async fn send_stream(&self, request: HttpRequest) -> Result<HttpStreamResponse, LLMError>;
 }
 
-/// 线程安全别名
+/// Thread-safe handle to a transport implementation.
 pub type DynHttpTransport = Arc<dyn HttpTransport>;
 
 #[cfg(test)]
@@ -92,8 +205,10 @@ mod tests {
     use async_trait::async_trait;
     use serde::ser;
 
-    /// 一个在 send/send_stream 被调用时直接 panic 的 Transport
-    /// 用于验证序列化失败时不会触发底层请求发送
+    /// Transport that panics if `send` or `send_stream` are invoked.
+    ///
+    /// The helper ensures serialization failures are surfaced before issuing real
+    /// network requests.
     struct PanicTransport;
 
     #[async_trait]
@@ -107,7 +222,7 @@ mod tests {
         }
     }
 
-    /// 自定义一个总是序列化失败的类型 用于触发序列化错误分支
+    /// Body type that intentionally fails serialization to trigger validation errors.
     struct NonSerializableBody;
 
     impl Serialize for NonSerializableBody {
@@ -142,7 +257,52 @@ mod tests {
     }
 }
 
-/// 使用统一逻辑发送 JSON POST 请求 方便 Provider 复用
+/// Serializes a body to JSON, attaches headers, and issues a POST request.
+///
+/// This helper centralizes JSON serialization so each provider can reuse the same logic
+/// without duplicating header or error handling.
+///
+/// # Examples
+///
+/// ```
+/// # use std::collections::HashMap;
+/// # use async_trait::async_trait;
+/// # use kotoba::http::{post_json_with_headers, HttpTransport, HttpRequest, HttpResponse, HttpStreamResponse};
+/// # use kotoba::error::LLMError;
+/// # use futures_util::stream;
+/// # use serde_json::json;
+/// struct MockTransport;
+///
+/// #[async_trait]
+/// impl HttpTransport for MockTransport {
+///     async fn send(&self, request: HttpRequest) -> Result<HttpResponse, LLMError> {
+///         assert_eq!(request.headers.get("X-Test"), Some(&"ok".to_string()));
+///         Ok(HttpResponse { status: 200, headers: request.headers, body: request.body.unwrap_or_default() })
+///     }
+///     async fn send_stream(&self, _request: HttpRequest) -> Result<HttpStreamResponse, LLMError> {
+///         panic!("streaming not used in this example");
+///     }
+/// }
+///
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let mut headers = HashMap::new();
+/// headers.insert("X-Test".to_string(), "ok".to_string());
+/// let response = post_json_with_headers(
+///     &MockTransport,
+///     "https://example.com",
+///     headers,
+///     &json!({"ping": "pong"}),
+/// )
+/// .await
+/// .unwrap();
+/// assert_eq!(response.status, 200);
+/// # });
+/// ```
+///
+/// # Errors
+///
+/// Returns [`LLMError::Validation`] if serialization fails or forwards the error raised by
+/// [`HttpTransport::send`].
 pub async fn post_json_with_headers<T: Serialize>(
     transport: &dyn HttpTransport,
     url: impl Into<String>,
@@ -156,7 +316,54 @@ pub async fn post_json_with_headers<T: Serialize>(
     transport.send(request).await
 }
 
-/// 使用统一逻辑发送 JSON POST 流式请求
+/// Issues a JSON POST request and returns the streaming response.
+///
+/// The helper mirrors [`post_json_with_headers`] but calls
+/// [`HttpTransport::send_stream`] to support Server-Sent Events and similar protocols.
+///
+/// # Examples
+///
+/// ```
+/// # use std::collections::HashMap;
+/// # use async_trait::async_trait;
+/// # use kotoba::http::{post_json_stream_with_headers, HttpTransport, HttpRequest, HttpResponse, HttpStreamResponse, HttpBodyStream};
+/// # use kotoba::error::LLMError;
+/// # use futures_util::{stream, StreamExt};
+/// # use serde_json::json;
+/// struct StreamTransport;
+///
+/// #[async_trait]
+/// impl HttpTransport for StreamTransport {
+///     async fn send(&self, _request: HttpRequest) -> Result<HttpResponse, LLMError> {
+///         panic!("non-streaming call is not used");
+///     }
+///     async fn send_stream(&self, request: HttpRequest) -> Result<HttpStreamResponse, LLMError> {
+///         let first = request.body.unwrap_or_default();
+///         let body = stream::once(async move { Ok(first) });
+///         Ok(HttpStreamResponse { status: 200, headers: request.headers, body: Box::pin(body) })
+///     }
+/// }
+///
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let mut headers = HashMap::new();
+/// headers.insert("X-Test".to_string(), "ok".to_string());
+/// let response = post_json_stream_with_headers(
+///     &StreamTransport,
+///     "https://example.com",
+///     headers,
+///     &json!({"hello": "world"}),
+/// )
+/// .await
+/// .unwrap();
+/// let collected: Vec<_> = response.body.collect::<Vec<_>>().await;
+/// assert_eq!(collected.len(), 1);
+/// # });
+/// ```
+///
+/// # Errors
+///
+/// Returns [`LLMError::Validation`] when serialization fails or propagates any error from
+/// [`HttpTransport::send_stream`].
 pub async fn post_json_stream_with_headers<T: Serialize>(
     transport: &dyn HttpTransport,
     url: impl Into<String>,

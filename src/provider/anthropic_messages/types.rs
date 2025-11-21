@@ -3,36 +3,36 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Anthropic Messages 非流式响应
+/// Non-streaming response payload returned by Anthropic Messages.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct AnthropicMessageResponse {
-    /// 一些兼容层可能不会返回 id，这里使用 Option 兼容
+    /// Some compatibility layers omit the `id`, so keep it optional.
     #[serde(default)]
     pub(crate) id: Option<String>,
     #[serde(default)]
     pub(crate) r#type: String,
     pub(crate) model: String,
-    /// Anthropic 始终返回 assistant 角色
+    /// Anthropic always reports the assistant role.
     #[serde(default)]
     pub(crate) role: String,
-    /// 内容块列表
+    /// Ordered list of content blocks.
     #[serde(default)]
     pub(crate) content: Vec<AnthropicContentBlock>,
-    /// 停止原因
+    /// Stop reason provided by the API.
     #[serde(default)]
     pub(crate) stop_reason: Option<String>,
-    /// 自定义停止序列
+    /// Custom stop sequence if set.
     #[serde(default)]
     pub(crate) stop_sequence: Option<String>,
-    /// token 用量
+    /// Token usage statistics.
     #[serde(default)]
     pub(crate) usage: Option<AnthropicUsage>,
-    /// 未来可能扩展的字段，直接透传给 ProviderMetadata.raw
+    /// Additional future fields forwarded to `ProviderMetadata::raw`.
     #[serde(flatten)]
     pub(crate) extra: HashMap<String, Value>,
 }
 
-/// 单个内容块（文本 / 图像 / 工具调用 / 工具结果 / 文档等）
+/// Single content block (text, image, tool call/result, document, etc.).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct AnthropicContentBlock {
     #[serde(rename = "type")]
@@ -47,17 +47,17 @@ pub(crate) struct AnthropicContentBlock {
     pub(crate) input: Option<Value>,
     #[serde(default, rename = "tool_use_id")]
     pub(crate) tool_use_id: Option<String>,
-    /// 工具结果 content，可能是字符串或内容块数组，这里先保持为原始 JSON
+    /// Tool result content; keep the raw JSON because it may be a string or block array.
     #[serde(default)]
     pub(crate) content: Option<Value>,
-    /// 图像 / 文档等的 source
+    /// Source information for images, documents, etc.
     #[serde(default)]
     pub(crate) source: Option<AnthropicImageSource>,
     #[serde(flatten)]
     pub(crate) extra: HashMap<String, Value>,
 }
 
-/// 图像 source 结构，仅覆盖最常用字段
+/// Image source structure covering the most common fields.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct AnthropicImageSource {
     #[serde(rename = "type")]
@@ -67,7 +67,7 @@ pub(crate) struct AnthropicImageSource {
     pub(crate) data: String,
 }
 
-/// Usage 统计
+/// Usage counters returned by Anthropic.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct AnthropicUsage {
     #[serde(default)]

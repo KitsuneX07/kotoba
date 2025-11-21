@@ -1,4 +1,8 @@
-//! LLM 多后端统一调用库
+//! Unified high-level client abstractions for multi-provider LLM access.
+//!
+//! This crate defines shared types, transport abstractions, and provider implementations
+//! so downstream applications can route chat requests to OpenAI, Anthropic, Google Gemini,
+//! or any additional vendor through one cohesive API surface.
 
 pub mod client;
 pub mod config;

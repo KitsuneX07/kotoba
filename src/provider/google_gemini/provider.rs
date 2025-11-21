@@ -20,7 +20,7 @@ use super::types::GeminiGenerateContentResponse;
 
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com";
 
-/// Google Gemini GenerateContent Provider
+/// Google Gemini GenerateContent provider implementation.
 pub struct GoogleGeminiProvider {
     pub(crate) transport: DynHttpTransport,
     pub(crate) base_url: String,
@@ -29,7 +29,7 @@ pub struct GoogleGeminiProvider {
 }
 
 impl GoogleGeminiProvider {
-    /// 使用默认 base_url 创建 Provider
+    /// Creates a provider that targets the default Google Generative Language endpoint.
     pub fn new(transport: DynHttpTransport, api_key: impl Into<String>) -> Self {
         Self {
             transport,
@@ -39,19 +39,19 @@ impl GoogleGeminiProvider {
         }
     }
 
-    /// 自定义 base_url，便于接入代理或兼容层
+    /// Overrides the base URL, making it easier to point at proxies or compatibility layers.
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
         self
     }
 
-    /// 设置默认模型名称，例如 `gemini-2.0-flash`
+    /// Sets a default model such as `gemini-2.0-flash` when the request omits one.
     pub fn with_default_model(mut self, model: impl Into<String>) -> Self {
         self.default_model = Some(model.into());
         self
     }
 
-    /// 构造非流式端点
+    /// Builds the non-streaming endpoint URL for GenerateContent.
     pub(crate) fn endpoint(&self, model: &str) -> String {
         let base = self.base_url.trim_end_matches('/');
         let model_path = normalize_model(model);
@@ -62,7 +62,7 @@ impl GoogleGeminiProvider {
         }
     }
 
-    /// 构造流式端点，使用 SSE 格式
+    /// Builds the streaming endpoint URL (SSE) for GenerateContent.
     pub(crate) fn stream_endpoint(&self, model: &str) -> String {
         let base = self.base_url.trim_end_matches('/');
         let model_path = normalize_model(model);

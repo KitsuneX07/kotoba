@@ -12,18 +12,42 @@ use super::{
     HttpTransport,
 };
 
-/// 基于 reqwest 的默认 HttpTransport
+/// [`HttpTransport`] implementation backed by `reqwest::Client`.
 pub struct ReqwestTransport {
     client: Client,
 }
 
 impl ReqwestTransport {
-    /// 使用自定义 reqwest::Client
+    /// Wraps a pre-configured `reqwest::Client`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kotoba::http::reqwest::ReqwestTransport;
+    ///
+    /// let client = reqwest::Client::builder().build().unwrap();
+    /// let transport = ReqwestTransport::new(client);
+    /// # let _ = transport;
+    /// ```
     pub fn new(client: Client) -> Self {
         Self { client }
     }
 
-    /// 创建默认配置
+    /// Creates a transport with the default `reqwest` configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kotoba::http::reqwest::ReqwestTransport;
+    ///
+    /// let transport = ReqwestTransport::default_client().expect("transport");
+    /// # let _ = transport;
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LLMError::Transport`] when the underlying `reqwest` client cannot be built
+    /// (for example, due to invalid TLS settings).
     pub fn default_client() -> Result<Self, LLMError> {
         Client::builder()
             .build()
@@ -132,7 +156,20 @@ impl HttpTransport for ReqwestTransport {
     }
 }
 
-/// 便捷构造线程安全 Transport
+/// Convenience helper that returns a thread-safe transport instance.
+///
+/// # Examples
+///
+/// ```
+/// use kotoba::http::reqwest::default_dyn_transport;
+///
+/// let transport = default_dyn_transport().expect("transport");
+/// # let _ = transport;
+/// ```
+///
+/// # Errors
+///
+/// Forwards any error produced by [`ReqwestTransport::default_client`].
 pub fn default_dyn_transport() -> Result<DynHttpTransport, LLMError> {
     Ok(Arc::new(ReqwestTransport::default()))
 }

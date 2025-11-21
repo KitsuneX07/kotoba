@@ -22,7 +22,7 @@ pub(crate) fn create_stream(
     Box::pin(OpenAiResponsesSseStream::new(body, provider, endpoint))
 }
 
-/// 当流式请求返回非 2xx 状态码时收集 body 用于错误信息
+/// Collects the full response body when a streaming request returns a non-2xx status.
 pub(crate) async fn collect_stream_text(
     mut body: HttpBodyStream,
     provider: &'static str,
@@ -93,7 +93,7 @@ impl OpenAiResponsesSseStream {
             message: format!("invalid UTF-8 in stream chunk: {err}"),
         })?;
         if data.trim() == "[DONE]" {
-            // 如果已经收到 completed 事件，则忽略额外的 [DONE]
+            // Ignore extra [DONE] markers once a completed event has been observed.
             if !self.done_received {
                 let chunk = ChatChunk {
                     events: Vec::new(),
@@ -211,7 +211,7 @@ fn convert_stream_event(
             }
             let message_delta = MessageDelta {
                 index,
-                // Responses 流式文本默认来自 assistant 角色
+                // Streaming text events originate from the assistant role.
                 role: Some(Role::assistant()),
                 content: vec![ContentDelta::Text { text: delta }],
                 finish_reason: None,
@@ -248,7 +248,7 @@ fn convert_stream_event(
                 },
             }))
         }
-        // 其他事件先忽略（response.created / response.in_progress / output_item.* 等），必要时扩展为 Custom 事件
+        // Ignore other events (response.created, response.in_progress, output_item.*, etc.).
         _ => Ok(None),
     }
 }

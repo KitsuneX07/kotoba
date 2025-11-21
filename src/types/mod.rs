@@ -1,9 +1,14 @@
+//! Shared data structures modeling multimodal chat requests and responses.
+//!
+//! These types normalize provider-specific payloads so the rest of the crate can stay
+//! agnostic of individual API differences.
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// 角色名称，兼容各供应商的 `role` 语义
+/// Chat role string compatible with provider-specific semantics.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Role(pub String);
@@ -22,76 +27,76 @@ impl Role {
     }
 }
 
-/// 通用聊天消息
+/// Normalized chat message shared across providers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
-    /// 消息角色
+    /// Role associated with this message.
     pub role: Role,
-    /// 供应商可选的 name 字段
+    /// Optional vendor-specific name attribute.
     pub name: Option<String>,
-    /// 多模态内容数组
+    /// Multimodal content parts provided in order.
     #[serde(default)]
     pub content: Vec<ContentPart>,
-    /// 附加元数据
+    /// Arbitrary metadata forwarded to providers.
     pub metadata: Option<HashMap<String, Value>>,
 }
 
-/// 消息内容块，覆盖文本、图像、工具等多模态
+/// Multimodal content part covering text, media, tools, and vendor data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentPart {
-    /// 文本内容
+    /// Text content variant.
     Text(TextContent),
-    /// 图像内容
+    /// Image content variant.
     Image(ImageContent),
-    /// 音频内容
+    /// Audio content variant.
     Audio(AudioContent),
-    /// 视频内容
+    /// Video content variant.
     Video(VideoContent),
-    /// 文件引用
+    /// File reference variant.
     File(FileContent),
-    /// 工具调用
+    /// Tool invocation emitted by the assistant.
     ToolCall(ToolCall),
-    /// 工具结果
+    /// Tool execution result authored by the tool role.
     ToolResult(ToolResult),
-    /// 未知或供应商自定义内容
+    /// Vendor-defined or opaque content payload.
     Data { data: Value },
 }
 
-/// 文本内容
+/// Textual content payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextContent {
-    /// 纯文本
+    /// Plain UTF-8 text.
     pub text: String,
 }
 
-/// 图像内容
+/// Image payload compatible with OpenAI and Anthropic semantics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageContent {
-    /// 图像来源
+    /// Source describing where the image bytes come from.
     pub source: ImageSource,
-    /// OpenAI/Anthropic 等的 detail 配置
+    /// Optional detail hints such as OpenAI or Anthropic detail levels.
     pub detail: Option<ImageDetail>,
-    /// 自定义元字段
+    /// Additional metadata forwarded verbatim.
     pub metadata: Option<HashMap<String, Value>>,
 }
 
-/// 图像来源
+/// Source for an image input.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ImageSource {
-    /// 远程 URL
+    /// Public URL accessible by the provider.
     Url { url: String },
-    /// base64 数据
+    /// Base64-encoded inline payload.
     Base64 {
         data: String,
         mime_type: Option<String>,
     },
-    /// 供应商文件 ID
+    /// Provider-managed file identifier.
     FileId { file_id: String },
 }
 
-/// 图像 detail
+/// Detail preset requested for image inspection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ImageDetail {
@@ -100,179 +105,179 @@ pub enum ImageDetail {
     Auto,
 }
 
-/// 音频内容
+/// Audio payload attached to a message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioContent {
-    /// 数据来源
+    /// Underlying media source description.
     pub source: MediaSource,
-    /// 音频格式
+    /// MIME type describing the audio format.
     pub mime_type: Option<String>,
-    /// 附加属性
+    /// Custom metadata map.
     pub metadata: Option<HashMap<String, Value>>,
 }
 
-/// 视频内容
+/// Video payload attached to a message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoContent {
-    /// 数据来源
+    /// Underlying media source description.
     pub source: MediaSource,
-    /// 视频格式
+    /// MIME type describing the video format.
     pub mime_type: Option<String>,
-    /// 附加属性
+    /// Custom metadata map.
     pub metadata: Option<HashMap<String, Value>>,
 }
 
-/// 文件内容
+/// File reference that can be resolved by providers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileContent {
-    /// 文件 ID
+    /// Provider file identifier.
     pub file_id: String,
-    /// 提示供应商文件用途
+    /// Optional hint describing the use case for the file.
     pub purpose: Option<String>,
-    /// 附加属性
+    /// Custom metadata map.
     pub metadata: Option<HashMap<String, Value>>,
 }
 
-/// 媒体来源通用定义
+/// Unified media source definition reused by audio and video parts.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum MediaSource {
     /// base64 inline
     Inline { data: String },
-    /// 供应商文件 ID
+    /// Provider-managed file identifier.
     FileId { file_id: String },
-    /// 远程 URL
+    /// Public URL accessible by the provider.
     Url { url: String },
 }
 
-/// 工具定义
+/// Declarative definition of a tool available to the assistant.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
-    /// 工具名称
+    /// Unique name exposed to the model.
     pub name: String,
-    /// 功能描述
+    /// Natural-language description of the tool purpose.
     pub description: Option<String>,
-    /// 输入 schema（JSON Schema）
+    /// Optional JSON Schema describing the input payload.
     pub input_schema: Option<Value>,
-    /// 工具类型
+    /// Category of the tool implementation.
     pub kind: ToolKind,
-    /// 附加 provider 定制字段
+    /// Provider-specific metadata forwarded untouched.
     pub metadata: Option<HashMap<String, Value>>,
 }
 
-/// 工具类型
+/// Enumerates supported tool kinds.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolKind {
-    /// 自定义函数
+    /// Custom function definition.
     Function,
-    /// 文件检索
+    /// File search helper.
     FileSearch,
-    /// 网络搜索
+    /// Web search helper.
     WebSearch,
-    /// 计算机操作
+    /// Computer-usage automation.
     ComputerUse,
-    /// 供应商专属工具
+    /// Provider-specific extension with optional configuration.
     Custom { name: String, config: Option<Value> },
 }
 
-/// 工具调用
+/// Tool call emitted inside a chat response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
-    /// 工具调用 ID
+    /// Provider-supplied invocation identifier.
     pub id: Option<String>,
-    /// 工具名称
+    /// Unique name exposed to the model.
     pub name: String,
-    /// 调用参数
+    /// Structured arguments serialized as JSON.
     pub arguments: Value,
-    /// 工具类型
+    /// Category of the tool implementation.
     pub kind: ToolCallKind,
 }
 
-/// 工具调用类型
+/// Tool call categories for streaming deltas.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolCallKind {
-    /// 函数调用
+    /// Function call.
     Function,
-    /// 文件搜索
+    /// File search call.
     FileSearch,
-    /// 网络搜索
+    /// Web search helper.
     WebSearch,
-    /// 计算机操作
+    /// Computer-usage automation.
     ComputerUse,
-    /// 供应商自定义类型
+    /// Provider-defined custom call type.
     Custom { name: String },
 }
 
-/// 工具执行结果
+/// Result returned by a tool execution step.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
-    /// 关联的调用 ID
+    /// Correlated call identifier.
     pub call_id: Option<String>,
-    /// 结果内容
+    /// JSON payload returned by the tool.
     pub output: Value,
-    /// 标记结果是否为错误
+    /// Indicates whether the tool reported an error.
     #[serde(default)]
     pub is_error: bool,
-    /// 附加内容（如 stdio）
+    /// Optional metadata such as captured stdio.
     pub metadata: Option<HashMap<String, Value>>,
 }
 
-/// 请求体，兼容不同供应商的公共字段
+/// Chat request shared across all providers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatRequest {
-    /// 消息列表
+    /// Ordered list of messages to send.
     pub messages: Vec<Message>,
-    /// 请求配置
+    /// Fine-grained chat options.
     #[serde(default)]
     pub options: ChatOptions,
-    /// 可用工具
+    /// Tool definitions available to the assistant.
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,
-    /// 工具选择策略
+    /// Strategy describing how tools may be invoked.
     pub tool_choice: Option<ToolChoice>,
-    /// 额外响应格式设置
+    /// Optional response-formatting requirements.
     pub response_format: Option<ResponseFormat>,
-    /// 供应商特定元数据
+    /// Vendor-specific metadata forwarded untouched.
     pub metadata: Option<HashMap<String, Value>>,
 }
 
-/// 请求控制参数
+/// Tunable chat options supported across providers.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ChatOptions {
-    /// 指定模型名称
+    /// Optional model identifier override.
     pub model: Option<String>,
-    /// 温度
+    /// Sampling temperature.
     pub temperature: Option<f32>,
     /// top_p
     pub top_p: Option<f32>,
-    /// 最大输出 tokens
+    /// Maximum number of output tokens.
     pub max_output_tokens: Option<u32>,
     /// presence_penalty
     pub presence_penalty: Option<f32>,
     /// frequency_penalty
     pub frequency_penalty: Option<f32>,
-    /// 并行工具调用
+    /// Whether providers may execute tools in parallel.
     pub parallel_tool_calls: Option<bool>,
-    /// OpenAI/Anthropic reasoning 扩展
+    /// Reasoning extensions for providers such as OpenAI or Anthropic.
     pub reasoning: Option<ReasoningOptions>,
-    /// OpenAI service tier、Gemini safety 等自定义参数
+    /// Additional provider-specific options (service tiers, safety, etc.).
     pub extra: HashMap<String, Value>,
 }
 
-/// 推理相关配置
+/// Configuration for reasoning extensions.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ReasoningOptions {
-    /// 推理强度
+    /// Effort presets requested from the provider.
     pub effort: Option<ReasoningEffort>,
-    /// 预算 tokens
+    /// Token budget for reasoning chains.
     pub budget_tokens: Option<u32>,
-    /// 自定义扩展
+    /// Map of provider-specific overrides.
     pub extra: HashMap<String, Value>,
 }
 
-/// 推理强度
+/// Reasoning effort presets supported by OpenAI and Anthropic.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReasoningEffort {
@@ -282,152 +287,152 @@ pub enum ReasoningEffort {
     Custom(String),
 }
 
-/// 工具选择策略
+/// Tool-choice strategies supported across providers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolChoice {
-    /// 供应商自动决定
+    /// Provider decides when to call tools.
     Auto,
-    /// 要求使用任意工具
+    /// Provider must invoke at least one tool.
     Any,
-    /// 禁用工具
+    /// Tools are disabled for the request.
     None,
-    /// 指定工具名称
+    /// Force a specific tool by name.
     Tool { name: String },
-    /// 供应商自定义配置
+    /// Custom serialized configuration passed directly to the provider.
     Custom(Value),
 }
 
-/// 响应格式
+/// Response-formatting modes supported by providers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResponseFormat {
-    /// 普通文本
+    /// Free-form text output.
     Text,
-    /// JSON 对象
+    /// Structured JSON object.
     JsonObject,
     /// JSON Schema
     JsonSchema { schema: Value },
-    /// 供应商自定义
+    /// Provider-specific response descriptor.
     Custom(Value),
 }
 
-/// 响应输出
+/// Aggregated chat response returned by a provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatResponse {
-    /// 输出列表（消息/工具等）
+    /// Outputs produced by the model (messages, tools, etc.).
     pub outputs: Vec<OutputItem>,
-    /// token 用量
+    /// Token usage accounting.
     pub usage: Option<TokenUsage>,
-    /// 结束原因
+    /// Why the response stopped.
     pub finish_reason: Option<FinishReason>,
-    /// 实际使用的模型
+    /// Effective model identifier reported by the provider.
     pub model: Option<String>,
-    /// 供应商元信息
+    /// Metadata about the provider invocation.
     pub provider: ProviderMetadata,
 }
 
-/// 输出项
+/// Individual output entry emitted by the provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OutputItem {
-    /// 完整助手消息
+    /// Completed assistant message.
     Message { message: Message, index: usize },
-    /// 工具调用
+    /// Tool invocation emitted by the assistant.
     ToolCall { call: ToolCall, index: usize },
-    /// 工具结果
+    /// Tool execution result authored by the tool role.
     ToolResult { result: ToolResult, index: usize },
-    /// 推理轨迹
+    /// Reasoning trace text.
     Reasoning { text: String, index: usize },
-    /// 供应商特定内容
+    /// Provider-specific payload.
     Custom { data: Value, index: usize },
 }
 
 /// Streaming chunk
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatChunk {
-    /// 增量事件
+    /// Incremental events produced by streaming responses.
     pub events: Vec<ChatEvent>,
-    /// 实时 usage 更新
+    /// Optional real-time token usage updates.
     pub usage: Option<TokenUsage>,
-    /// 是否为最后一个 chunk
+    /// Indicates whether this is the terminal chunk.
     pub is_terminal: bool,
-    /// 供应商元信息
+    /// Metadata about the provider invocation.
     pub provider: ProviderMetadata,
 }
 
-/// 流式事件
+/// Streaming event emitted as part of a [`ChatChunk`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ChatEvent {
-    /// 文本增量
+    /// Text delta.
     MessageDelta(MessageDelta),
-    /// 工具调用增量
+    /// Tool-call delta.
     ToolCallDelta(ToolCallDelta),
-    /// 工具结果增量
+    /// Tool-result delta.
     ToolResultDelta(ToolResultDelta),
-    /// 供应商原始事件
+    /// Provider-specific raw event.
     Custom { data: Value },
 }
 
-/// 文本增量
+/// Delta describing textual content generated so far.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageDelta {
-    /// 目标消息索引
+    /// Target message index within the response.
     pub index: usize,
-    /// 角色
+    /// Optional role override.
     pub role: Option<Role>,
-    /// 内容增量
+    /// Incremental content fragments.
     pub content: Vec<ContentDelta>,
-    /// 结束原因
+    /// Why the response stopped.
     pub finish_reason: Option<FinishReason>,
 }
 
-/// 内容增量
+/// Variants for streamed content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentDelta {
-    /// 文本片段
+    /// Text fragment appended to the message.
     Text { text: String },
-    /// 富文本 JSON
+    /// Rich JSON fragment.
     Json { value: Value },
-    /// 工具调用嵌入
+    /// Embedded tool-call delta.
     ToolCall { delta: ToolCallDelta },
 }
 
-/// 工具调用增量
+/// Delta describing the ongoing tool call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallDelta {
-    /// 目标索引
+    /// Tool call index.
     pub index: usize,
-    /// 调用 ID
+    /// Streaming identifier assigned by the provider.
     pub id: Option<String>,
-    /// 工具名称
+    /// Unique name exposed to the model.
     pub name: Option<String>,
-    /// 参数增量
+    /// Arguments appended so far.
     pub arguments_delta: Option<String>,
-    /// 工具类型
+    /// Category of the tool implementation.
     pub kind: Option<ToolCallKind>,
-    /// 是否完成
+    /// Indicates whether the call finished.
     pub is_finished: bool,
 }
 
-/// 工具结果增量
+/// Delta describing tool results during streaming.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResultDelta {
-    /// 目标索引
+    /// Tool call index.
     pub index: usize,
-    /// 工具调用 ID
+    /// Provider-supplied invocation identifier.
     pub call_id: Option<String>,
-    /// 输出增量
+    /// Output fragment added so far.
     pub output_delta: Option<String>,
-    /// 是否为错误
+    /// Indicates whether the result is an error.
     pub is_error: Option<bool>,
-    /// 是否完成
+    /// Indicates whether the call finished.
     pub is_finished: bool,
 }
 
-/// token 用量
+/// Token usage metrics collected from the provider.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TokenUsage {
     /// prompt tokens
@@ -436,13 +441,13 @@ pub struct TokenUsage {
     pub completion_tokens: Option<u64>,
     /// reasoning tokens
     pub reasoning_tokens: Option<u64>,
-    /// 总 tokens
+    /// Total tokens across prompt, completion, and reasoning.
     pub total_tokens: Option<u64>,
-    /// 供应商自定义统计
+    /// Provider-specific accounting details.
     pub details: Option<HashMap<String, Value>>,
 }
 
-/// 结束原因
+/// Why a chat response stopped generating content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FinishReason {
@@ -455,34 +460,34 @@ pub enum FinishReason {
     Other(String),
 }
 
-/// 供应商元信息
+/// Provider metadata returned with each response.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProviderMetadata {
-    /// 供应商标识（如 openai_chat）
+    /// Provider identifier such as `openai_chat`.
     pub provider: String,
-    /// 请求 ID
+    /// Upstream request identifier.
     pub request_id: Option<String>,
-    /// 端点描述
+    /// Endpoint description or URL.
     pub endpoint: Option<String>,
-    /// 原始响应片段
+    /// Raw response excerpt for debugging.
     pub raw: Option<Value>,
 }
 
-/// 能力描述，方便运行时过滤
+/// Capability descriptor used to filter providers at runtime.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CapabilityDescriptor {
-    /// 是否支持流式输出
+    /// Whether the provider supports streaming outputs.
     pub supports_stream: bool,
-    /// 是否支持图像输入
+    /// Whether image inputs are supported.
     pub supports_image_input: bool,
-    /// 是否支持音频输入
+    /// Whether audio inputs are supported.
     pub supports_audio_input: bool,
-    /// 是否支持视频输入
+    /// Whether video inputs are supported.
     pub supports_video_input: bool,
-    /// 是否支持工具调用
+    /// Whether tool calls are supported.
     pub supports_tools: bool,
-    /// 是否支持 JSON/结构化输出
+    /// Whether structured JSON output is available.
     pub supports_structured_output: bool,
-    /// 是否支持多轮函数调用
+    /// Whether parallel tool calls are supported.
     pub supports_parallel_tool_calls: bool,
 }

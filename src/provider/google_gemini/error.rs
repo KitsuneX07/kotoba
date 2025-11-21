@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::error::LLMError;
 
-/// 解析 Google Gemini 错误响应
+/// Parses error responses returned by Google Gemini.
 pub(crate) fn parse_gemini_error(status: u16, body: &str) -> LLMError {
     #[derive(Deserialize)]
     struct ErrorBody {
@@ -28,7 +28,7 @@ pub(crate) fn parse_gemini_error(status: u16, body: &str) -> LLMError {
                 }
             }
 
-            // HTTP 状态码 + Google RPC Status 的联合判断
+            // Combine HTTP status with Google RPC status codes for richer classification.
             return match (status, error.code.unwrap_or(status as i32)) {
                 (401, _) => LLMError::Auth { message },
                 (403, _) => LLMError::Auth { message },
@@ -53,7 +53,7 @@ pub(crate) fn parse_gemini_error(status: u16, body: &str) -> LLMError {
         }
     }
 
-    // 兜底：无法解析为标准错误结构时，直接返回原始 body
+    // Fallback: if the payload cannot be parsed, return the raw body.
     LLMError::Provider {
         provider: "google_gemini",
         message: format!("status {status}: {body}"),
@@ -137,7 +137,7 @@ mod tests {
             other => panic!("expected Provider error, got {other:?}"),
         }
 
-        // 非 JSON 或无法解析时，应该走兜底 Provider 分支
+        // For non-JSON payloads we expect the fallback Provider branch.
         let body = "not a json";
         let err = parse_gemini_error(500, body);
         match err {

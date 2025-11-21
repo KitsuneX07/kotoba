@@ -10,7 +10,7 @@ use crate::types::{
 
 use super::types::{GeminiContent, GeminiGenerateContentResponse, GeminiUsageMetadata};
 
-/// 将 Gemini GenerateContentResponse 映射为统一的 ChatResponse
+/// Maps `GeminiGenerateContentResponse` to the unified [`ChatResponse`].
 pub(crate) fn map_response(
     resp: GeminiGenerateContentResponse,
     provider: &'static str,
@@ -62,7 +62,7 @@ fn convert_candidate_content(
         .role
         .as_deref()
         .map(|r| match r {
-            // Gemini 使用 model 表示助手
+            // Gemini uses `model` to represent the assistant role.
             "model" => Role::assistant(),
             other => Role(other.to_string()),
         })
@@ -73,7 +73,7 @@ fn convert_candidate_content(
     let mut tool_results = Vec::new();
 
     for part in &content.parts {
-        // 函数调用 -> ToolCall 输出项，不放入 message 内容
+        // Function calls become [`OutputItem::ToolCall`] and stay out of message content.
         if let Some(call) = &part.function_call {
             let tool_call = ToolCall {
                 id: None,
@@ -85,7 +85,7 @@ fn convert_candidate_content(
             continue;
         }
 
-        // 函数响应 -> ToolResult 输出项，同样不放入 message 内容
+        // Function responses become [`OutputItem::ToolResult`], also outside message content.
         if let Some(resp) = &part.function_response {
             let result = ToolResult {
                 call_id: None,
@@ -97,7 +97,7 @@ fn convert_candidate_content(
             continue;
         }
 
-        // 纯文本 part，作为正常消息内容
+        // Plain-text parts become normal message content.
         if let Some(text) = &part.text {
             if !text.is_empty() {
                 msg_parts.push(ContentPart::Text(TextContent { text: text.clone() }));
@@ -105,7 +105,7 @@ fn convert_candidate_content(
             }
         }
 
-        // 其余多模态 / 元信息整体透传为 Data，供上层按需解析
+        // Any other multimodal/meta part is forwarded as Data for higher layers.
         let data = serde_json::to_value(part).map_err(|err| LLMError::Provider {
             provider,
             message: format!("failed to serialize Gemini part: {err}"),
@@ -122,13 +122,13 @@ fn convert_candidate_content(
     Ok((message, tool_calls, tool_results))
 }
 
-/// FinishReason 文本 -> 通用 FinishReason
+/// Maps Gemini finish reasons into the common [`FinishReason`].
 pub(crate) fn convert_finish_reason(reason: &str) -> FinishReason {
     match reason {
         "STOP" => FinishReason::Stop,
         "MAX_TOKENS" => FinishReason::Length,
         "MALFORMED_FUNCTION_CALL" => FinishReason::FunctionCall,
-        // SAFETY / BLOCKLIST / PROHIBITED_CONTENT / SPII / IMAGE_SAFETY 等都视为内容过滤
+        // Treat SAFETY / BLOCKLIST / PROHIBITED_CONTENT / SPII / IMAGE_SAFETY as content filters.
         "SAFETY" | "RECITATION" | "LANGUAGE" | "BLOCKLIST" | "PROHIBITED_CONTENT" | "SPII"
         | "IMAGE_SAFETY" => FinishReason::ContentFilter,
         other => FinishReason::Other(other.to_string()),
@@ -148,7 +148,7 @@ pub(crate) fn convert_usage(usage: &GeminiUsageMetadata) -> TokenUsage {
     if let Some(v) = usage.thoughts_token_count {
         details.insert("thoughts_token_count".to_string(), Value::from(v));
     }
-    // 其它细节字段统一透传
+    // Forward any other detail fields as-is.
     for (k, v) in &usage.extra {
         details.insert(k.clone(), v.clone());
     }
@@ -171,13 +171,13 @@ mod tests {
     use super::super::types::{GeminiCandidate, GeminiPart, GeminiUsageMetadata};
     use super::*;
 
-    /// 基础非流式响应映射
+    /// Maps a basic non-streaming response.
     #[test]
     fn map_basic_text_response() {
         let candidate = GeminiCandidate {
             content: Some(GeminiContent {
                 parts: vec![GeminiPart {
-                    text: Some("你好，世界".to_string()),
+                    text: Some("Hello, world".to_string()),
                     inline_data: None,
                     file_data: None,
                     function_call: None,
@@ -227,7 +227,7 @@ mod tests {
                 assert_eq!(message.content.len(), 1);
                 match &message.content[0] {
                     ContentPart::Text(TextContent { text }) => {
-                        assert_eq!(text, "你好，世界");
+                        assert_eq!(text, "Hello, world");
                     }
                     other => panic!("unexpected content part: {other:?}"),
                 }
@@ -241,7 +241,7 @@ mod tests {
         assert_eq!(usage.total_tokens, Some(11));
     }
 
-    /// FinishReason 映射
+    /// Tests finish-reason mapping.
     #[test]
     fn convert_finish_reason_variants() {
         assert!(matches!(convert_finish_reason("STOP"), FinishReason::Stop));

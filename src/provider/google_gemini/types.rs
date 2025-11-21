@@ -3,30 +3,30 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// GenerateContentResponse 顶层结构（非流式与流式 chunk 共用）
+/// Top-level GenerateContentResponse shared by sync calls and streaming chunks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct GeminiGenerateContentResponse {
-    /// 候选回答列表
+    /// Candidate responses produced by Gemini.
     #[serde(default)]
     pub(crate) candidates: Vec<GeminiCandidate>,
-    /// 与内容过滤相关的提示反馈
+    /// Prompt feedback about content filtering.
     #[serde(default, rename = "promptFeedback")]
     pub(crate) prompt_feedback: Option<Value>,
-    /// token 用量元信息
+    /// Token usage metadata.
     #[serde(default, rename = "usageMetadata")]
     pub(crate) usage_metadata: Option<GeminiUsageMetadata>,
-    /// 实际使用的模型版本
+    /// Model version actually used for the response.
     #[serde(default, rename = "modelVersion")]
     pub(crate) model_version: Option<String>,
-    /// 本次响应的 ID
+    /// Unique response identifier.
     #[serde(default, rename = "responseId")]
     pub(crate) response_id: Option<String>,
-    /// 其余未映射字段，透传为 provider 元数据
+    /// Any unmapped fields forwarded to provider metadata.
     #[serde(flatten)]
     pub(crate) extra: HashMap<String, Value>,
 }
 
-/// 单个候选回答
+/// Single candidate response entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct GeminiCandidate {
     #[serde(default)]
@@ -35,12 +35,12 @@ pub(crate) struct GeminiCandidate {
     pub(crate) finish_reason: Option<String>,
     #[serde(default)]
     pub(crate) index: Option<usize>,
-    /// 其它字段透传，例如 safetyRatings / citationMetadata 等
+    /// Additional fields (safety ratings, citation metadata, etc.) are forwarded.
     #[serde(flatten)]
     pub(crate) extra: HashMap<String, Value>,
 }
 
-/// 候选内容
+/// Candidate content payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct GeminiContent {
     #[serde(default)]
@@ -51,35 +51,35 @@ pub(crate) struct GeminiContent {
     pub(crate) extra: HashMap<String, Value>,
 }
 
-/// Content.part，多模态内容单元
+/// Multimodal content part emitted by Gemini.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct GeminiPart {
-    /// 纯文本
+    /// Plain text part.
     #[serde(default)]
     pub(crate) text: Option<String>,
-    /// 内联媒体数据（base64）
+    /// Inline media data encoded as base64.
     #[serde(default, rename = "inlineData", alias = "inline_data")]
     pub(crate) inline_data: Option<GeminiInlineData>,
-    /// 文件引用（如 File API / GCS）
+    /// File references (File API, GCS, etc.).
     #[serde(default, rename = "fileData", alias = "file_data")]
     pub(crate) file_data: Option<GeminiFileData>,
-    /// 函数调用请求
+    /// Function-call request part.
     #[serde(default, rename = "functionCall", alias = "function_call")]
     pub(crate) function_call: Option<GeminiFunctionCall>,
-    /// 函数调用响应
+    /// Function-call response part.
     #[serde(default, rename = "functionResponse", alias = "function_response")]
     pub(crate) function_response: Option<GeminiFunctionResponse>,
-    /// 可执行代码
+    /// Executable code snippet.
     #[serde(default, rename = "executableCode", alias = "executable_code")]
     pub(crate) executable_code: Option<GeminiExecutableCode>,
-    /// 代码执行结果
+    /// Code execution result.
     #[serde(
         default,
         rename = "codeExecutionResult",
         alias = "code_execution_result"
     )]
     pub(crate) code_execution_result: Option<GeminiCodeExecutionResult>,
-    /// 未来可能扩展的其它字段，透传为 JSON
+    /// Future extension fields forwarded as JSON.
     #[serde(flatten)]
     pub(crate) extra: HashMap<String, Value>,
 }
@@ -101,30 +101,30 @@ pub(crate) struct GeminiFileData {
     pub(crate) file_uri: String,
 }
 
-/// 函数调用
+/// Function-call description.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct GeminiFunctionCall {
     pub(crate) name: String,
-    /// 函数参数，JSON 对象
+    /// Function arguments represented as JSON.
     #[serde(default)]
     pub(crate) args: Value,
 }
 
-/// 函数调用响应
+/// Function-call response payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct GeminiFunctionResponse {
     pub(crate) name: String,
     pub(crate) response: Value,
 }
 
-/// 可执行代码片段
+/// Executable code snippet.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct GeminiExecutableCode {
     pub(crate) language: String,
     pub(crate) code: String,
 }
 
-/// 代码执行结果
+/// Result of executing code.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct GeminiCodeExecutionResult {
     pub(crate) outcome: String,
@@ -147,7 +147,7 @@ pub(crate) struct GeminiUsageMetadata {
     pub(crate) tool_use_prompt_token_count: Option<u64>,
     #[serde(rename = "thoughtsTokenCount", default)]
     pub(crate) thoughts_token_count: Option<u64>,
-    /// 其它明细字段（各模态 token 统计等）统一放入 details
+    /// Additional modal-specific counts are flattened into `extra`.
     #[serde(flatten)]
     pub(crate) extra: HashMap<String, Value>,
 }

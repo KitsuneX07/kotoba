@@ -13,21 +13,24 @@ use crate::provider::google_gemini::GoogleGeminiProvider;
 use crate::provider::openai_chat::OpenAiChatProvider;
 use crate::provider::openai_responses::OpenAiResponsesProvider;
 
-/// 模型配置 描述一个可调用后端
+/// Describes a provider handle that can be registered on an [`LLMClient`].
+///
+/// Each configuration declares the provider kind, credentials, optional defaults, and
+/// vendor-specific metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelConfig {
-    /// 自定义句柄 例如 `default-openai`
+    /// Human-readable handle such as `default-openai`.
     pub handle: String,
     pub provider: ProviderKind,
     pub credential: Credential,
     pub default_model: Option<String>,
     pub base_url: Option<String>,
-    /// 附加设置 例如 service_tier 或 safetySettings
+    /// Extra provider-specific settings such as `service_tier` or `safetySettings`.
     #[serde(default)]
     pub extra: HashMap<String, Value>,
 }
 
-/// 供应商类型
+/// Enumerates the provider kinds supported by the configuration loader.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
@@ -37,26 +40,56 @@ pub enum ProviderKind {
     GoogleGemini,
 }
 
-/// 鉴权信息
+/// Credential variants understood by the configuration loader.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Credential {
-    /// 简单 API Key
+    /// API key passed via an HTTP header.
     ApiKey {
-        /// header 名称 留空时按 provider 默认
+        /// Optional header name; when omitted the provider default is used.
         header: Option<String>,
-        /// 密钥
+        /// Secret value used as the API key.
         key: String,
     },
-    /// Bearer Token
+    /// Bearer token used with the standard `Authorization` header.
     Bearer { token: String },
-    /// Google/GCP Service Account JSON
+    /// Google or GCP Service Account JSON blob.
     ServiceAccount { json: Value },
-    /// 无需鉴权的本地 provider
+    /// Dummy variant for providers that do not require credentials.
     None,
 }
 
-/// 根据一组模型配置构建 LLMClient
+/// Builds an [`LLMClient`] from the provided model configurations.
+///
+/// Each configuration is converted into a `DynProvider` with the supplied transport and
+/// registered under the declared handle, returning an [`LLMClient`] that owns all
+/// resulting providers. The helper is ideal for bootstrapping clients from configuration
+/// files or environment settings.
+///
+/// # Examples
+///
+/// ```
+/// # use std::collections::HashMap;
+/// # use kotoba::config::{ModelConfig, ProviderKind, Credential, build_client_from_configs};
+/// # use kotoba::http::reqwest::default_dyn_transport;
+/// let configs = vec![ModelConfig {
+///     handle: "default-openai".into(),
+///     provider: ProviderKind::OpenAiChat,
+///     credential: Credential::ApiKey { header: None, key: "test-key".into() },
+///     default_model: Some("gpt-4.1-mini".into()),
+///     base_url: None,
+///     extra: HashMap::new(),
+/// }];
+/// let transport = default_dyn_transport().expect("transport");
+/// let client = build_client_from_configs(&configs, transport).expect("client");
+/// assert_eq!(client.handles(), vec!["default-openai".to_string()]);
+/// ```
+///
+/// # Errors
+///
+/// Returns [`LLMError::Auth`] when credentials are invalid or missing, [`LLMError::Validation`]
+/// when duplicate handles are present, or any provider-specific error raised while
+/// constructing provider instances.
 pub fn build_client_from_configs(
     configs: &[ModelConfig],
     transport: DynHttpTransport,
@@ -172,7 +205,7 @@ mod tests {
     use super::*;
     use crate::http::reqwest::default_dyn_transport;
 
-    /// 验证所有 ProviderKind 分支都可以被构建并注册到 LLMClient
+    /// Ensures every [`ProviderKind`] variant can be registered on [`LLMClient`].
     #[test]
     fn build_client_from_configs_supports_all_providers() {
         let transport = default_dyn_transport().expect("transport");
@@ -307,7 +340,7 @@ mod tests {
         }
     }
 
-    /// 使用 ServiceAccount 凭证时应当被拒绝并返回 Auth 错误
+    /// Rejects unsupported service account credentials.
     #[test]
     fn build_client_from_configs_rejects_service_account() {
         let transport = default_dyn_transport().expect("transport");
@@ -340,7 +373,7 @@ mod tests {
         }
     }
 
-    /// Bearer Token 凭证应当被接受并构建成功
+    /// Accepts bearer-token credentials when building the client.
     #[test]
     fn build_client_from_configs_accepts_bearer_token() {
         let transport = default_dyn_transport().expect("transport");
@@ -362,7 +395,7 @@ mod tests {
         }
     }
 
-    /// 当配置中出现重复 handle 时 应当报校验错误
+    /// Surfaces a validation error when duplicate handles exist in the input configs.
     #[test]
     fn build_client_from_configs_rejects_duplicate_handles() {
         let transport = default_dyn_transport().expect("transport");

@@ -16,7 +16,7 @@ use crate::types::{
 use super::response::{convert_finish_reason, convert_usage};
 use super::types::GeminiGenerateContentResponse;
 
-/// 将 HTTP 流包装为 ChatStream
+/// Wraps the raw HTTP stream into a [`ChatStream`].
 pub(crate) fn create_stream(
     body: HttpBodyStream,
     provider: &'static str,
@@ -25,7 +25,7 @@ pub(crate) fn create_stream(
     Box::pin(GeminiSseStream::new(body, provider, endpoint))
 }
 
-/// 在出错时收集整个流的文本，方便构造错误信息
+/// Collects the entire stream body when errors occur to build rich error messages.
 pub(crate) async fn collect_stream_text(
     mut body: HttpBodyStream,
     provider: &'static str,
@@ -208,7 +208,7 @@ fn convert_stream_chunk(
     for (default_index, candidate) in chunk.candidates.iter().enumerate() {
         let index = candidate.index.unwrap_or(default_index);
         if let Some(content) = &candidate.content {
-            // role 映射
+            // Map Gemini roles to unified roles (`model` -> assistant).
             let role = content
                 .role
                 .as_deref()
@@ -221,7 +221,7 @@ fn convert_stream_chunk(
             let mut content_deltas = Vec::new();
 
             for part in &content.parts {
-                // 函数调用增量 -> ToolCallDelta 事件
+                // Function-call delta translates into a [`ToolCallDelta`].
                 if let Some(call) = &part.function_call {
                     let args_str = match serde_json::to_string(&call.args) {
                         Ok(s) => s,
@@ -233,14 +233,14 @@ fn convert_stream_chunk(
                         name: Some(call.name.clone()),
                         arguments_delta: Some(args_str),
                         kind: Some(ToolCallKind::Function),
-                        // Gemini 当前没有专门的 tool_calls finish reason，这里统一视为完成
+                        // Gemini lacks a dedicated tool_calls finish reason, so treat it as finished.
                         is_finished: true,
                     };
                     events.push(ChatEvent::ToolCallDelta(delta));
                     continue;
                 }
 
-                // 文本片段 -> MessageDelta 文本增量
+                // Text fragments become [`ContentDelta::Text`].
                 if let Some(text) = &part.text {
                     if !text.is_empty() {
                         content_deltas.push(ContentDelta::Text { text: text.clone() });
@@ -248,7 +248,7 @@ fn convert_stream_chunk(
                     }
                 }
 
-                // 其它多模态 / 元信息 -> Json 增量
+                // Other multimodal/meta parts become JSON deltas for consumers to parse.
                 let value = serde_json::to_value(part).unwrap_or_else(|_| json!({}));
                 content_deltas.push(ContentDelta::Json { value });
             }
@@ -289,7 +289,7 @@ mod tests {
     use super::*;
     use crate::types::{ChatEvent, ContentDelta, FinishReason};
 
-    /// 仅包含文本增量的流式 chunk
+    /// Ensures pure text deltas convert into a single [`MessageDelta`].
     #[test]
     fn convert_stream_chunk_with_text_delta() {
         let chunk = GeminiGenerateContentResponse {

@@ -309,7 +309,7 @@ mod tests {
     use super::*;
     use crate::types::{ChatEvent, ContentDelta, FinishReason};
 
-    /// 仅包含文本增量的流式 chunk
+    /// Stream chunk that only contains a text delta.
     #[test]
     fn convert_stream_chunk_with_text_delta() {
         let chunk = OpenAiStreamChunk {
@@ -342,7 +342,7 @@ mod tests {
         assert_eq!(usage.completion_tokens, Some(2));
         assert_eq!(usage.total_tokens, Some(3));
 
-        // 产生一个 MessageDelta 事件
+        // Emit a single MessageDelta event.
         assert_eq!(chat_chunk.events.len(), 1);
         match &chat_chunk.events[0] {
             ChatEvent::MessageDelta(delta) => {
@@ -362,7 +362,7 @@ mod tests {
         }
     }
 
-    /// content 为 Parts 形式的增量
+    /// Converts content delta events that arrive as message parts.
     #[test]
     fn convert_content_delta_from_parts() {
         let parts = vec![
@@ -397,7 +397,7 @@ mod tests {
         }
     }
 
-    /// 工具调用增量的转换
+    /// Converts tool-call delta fragments into [`ToolCallDelta`] events.
     #[test]
     fn convert_tool_call_delta_event_basic() {
         let delta = OpenAiToolCallDelta {

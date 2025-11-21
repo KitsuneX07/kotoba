@@ -93,7 +93,7 @@ impl AnthropicSseStream {
             message: format!("invalid UTF-8 in stream chunk: {err}"),
         })?;
 
-        // Anthropic Messages SSE 每个 data 块对应一个事件 JSON
+        // Each Anthropic Messages SSE data chunk corresponds to a JSON event payload.
         let value: Value = serde_json::from_str(&data).map_err(|err| LLMError::Provider {
             provider: self.provider,
             message: format!("failed to parse stream event: {err}"),
@@ -223,7 +223,7 @@ fn convert_stream_event(
             "message_delta" => {
                 if let Some(delta) = event.get("delta") {
                     if let Some(usage_obj) = delta.get("usage") {
-                        // 尝试将 usage 对象解析为 AnthropicUsage，再复用 convert_usage
+                        // Attempt to deserialize the usage object into AnthropicUsage and reuse convert_usage.
                         if let Ok(anthropic_usage) = serde_json::from_value::<
                             super::types::AnthropicUsage,
                         >(usage_obj.clone())
@@ -247,13 +247,13 @@ fn convert_stream_event(
                 }
             }
             "message_stop" => {
-                // 仅通过 is_terminal 标记最后一个 chunk，这里无需额外事件
+                // Mark the final chunk via `is_terminal`; no extra event is required here.
             }
             _ => {}
         }
     }
 
-    // 不管是否识别，始终附带一个 Custom 事件保留原始结构，方便调试与扩展
+    // Always attach a Custom event with the raw structure to aid debugging and extensions.
     events.push(ChatEvent::Custom {
         data: event.clone(),
     });
@@ -281,7 +281,7 @@ mod tests {
         let event = json!({
             "type": "content_block_delta",
             "index": 0,
-            "delta": { "text": "从前" }
+            "delta": { "text": "Once upon a time" }
         });
         let chunk =
             convert_stream_event(event, "anthropic_messages", "endpoint", false).expect("convert");

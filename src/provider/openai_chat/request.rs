@@ -25,9 +25,9 @@ pub(crate) fn build_openai_body(
         body.insert("top_p".to_string(), Value::from(top_p));
     }
     if let Some(max_tokens) = request.options.max_output_tokens {
-        // Chat Completions 历史上使用 `max_tokens`，后续新增了 `max_completion_tokens`。
-        // 为了兼容当前大量 OpenAI 兼容网关实现（不少网关尚未适配 `max_completion_tokens`），
-        // 这里优先使用更通用、更兼容的 `max_tokens` 字段。
+        // Chat Completions originally exposed `max_tokens` and only later introduced
+        // `max_completion_tokens`. Many OpenAI-compatible gateways still expect the
+        // former, so the mapper prefers `max_tokens` for broader compatibility.
         body.insert("max_tokens".to_string(), Value::from(max_tokens));
     }
     if let Some(penalty) = request.options.presence_penalty {
@@ -159,9 +159,9 @@ fn convert_content_part(part: &ContentPart) -> Result<Value, LLMError> {
                     "image_url": { "url": url, "detail": detail }
                 })),
                 ImageSource::Base64 { data, mime_type } => {
-                    // 按 OpenAI 官方规范，这里需要拼接 data: 协议前缀，形成标准 Data URL：
-                    // data:<mime>;base64,<data>
-                    // 这种形式同时兼容 OpenAI 官方接口和大多数 OpenAI-兼容网关（包括 newapi）。
+                    // OpenAI expects inline images to use a `data:` URL in the form
+                    // `data:<mime>;base64,<data>`, which is also supported by most
+                    // OpenAI-compatible gateways (including newapi).
                     let mime = mime_type.as_deref().unwrap_or("application/octet-stream");
                     Ok(json!({
                         "type": "image_url",
@@ -305,7 +305,7 @@ mod tests {
     };
     use serde_json::json;
 
-    /// 构造一个只包含最简文本消息的请求体
+    /// Builds a request body that contains the minimal text message payload.
     #[test]
     fn build_body_with_basic_text_message() {
         let request = ChatRequest {
@@ -325,11 +325,11 @@ mod tests {
         };
 
         let body = build_openai_body(&request, "gpt-4.1", false).expect("body should be built");
-        // 顶层字段
+        // Validate top-level fields.
         assert_eq!(body["model"], json!("gpt-4.1"));
         assert_eq!(body["stream"], json!(false));
 
-        // 消息结构
+        // Validate message structure.
         let messages = body["messages"]
             .as_array()
             .expect("messages should be array");
@@ -388,7 +388,7 @@ mod tests {
         let body = build_openai_body(&request, "gpt-4.1", true).expect("body should be built");
 
         assert_eq!(body["model"], json!("gpt-4.1"));
-        // 浮点字段使用近似比较，避免 f32/JSON 之间的精度差异
+        // Compare floating-point fields approximately to avoid f32/JSON precision gaps.
         let temperature = body["temperature"].as_f64().unwrap();
         assert!((temperature - 0.3).abs() < 1e-6);
         let top_p = body["top_p"].as_f64().unwrap();
@@ -405,11 +405,11 @@ mod tests {
         assert_eq!(body["service_tier"], json!("default"));
         assert_eq!(body["stream"], json!(true));
 
-        // metadata 被打包为对象
+        // Metadata is serialized into an object.
         assert_eq!(body["metadata"]["trace_id"], json!("abc123"));
     }
 
-    /// 多模态内容（图像/音频/视频/文件/Data）的映射
+    /// Maps multimodal content (images, audio, video, files, and custom data).
     #[test]
     fn convert_various_content_parts() {
         let parts = vec![
@@ -464,7 +464,7 @@ mod tests {
             .map(|p| convert_content_part(p).expect("convert content"))
             .collect();
 
-        // URL 图像
+        // Remote URL image.
         assert_eq!(
             converted[0],
             json!({
@@ -473,7 +473,7 @@ mod tests {
             })
         );
 
-        // Base64 图像 → data URL
+        // Base64 image mapped to a data URL.
         assert_eq!(
             converted[1],
             json!({
@@ -482,7 +482,7 @@ mod tests {
             })
         );
 
-        // FileId 图像
+        // FileId image reference.
         assert_eq!(
             converted[2],
             json!({
@@ -491,7 +491,7 @@ mod tests {
             })
         );
 
-        // 音频
+        // Audio content.
         assert_eq!(
             converted[3],
             json!({
@@ -503,7 +503,7 @@ mod tests {
             })
         );
 
-        // 视频
+        // Video content.
         assert_eq!(
             converted[4],
             json!({
@@ -515,7 +515,7 @@ mod tests {
             })
         );
 
-        // 文件
+        // File content.
         assert_eq!(
             converted[5],
             json!({
@@ -524,11 +524,11 @@ mod tests {
             })
         );
 
-        // Data 原样透传
+        // Custom data is forwarded verbatim.
         assert_eq!(converted[6], json!({"custom": 1}));
     }
 
-    /// 工具调用和 tool_choice 映射
+    /// Maps tool definitions and the `tool_choice` directive.
     #[test]
     fn convert_tools_and_tool_choice() {
         let tools = vec![ToolDefinition {
@@ -551,7 +551,7 @@ mod tests {
             })
         );
 
-        // tool_choice: auto / any / none / 指定函数 / 自定义
+        // tool_choice cases: auto / any / none / explicit function / custom.
         assert_eq!(
             convert_tool_choice(&ToolChoice::Auto).unwrap(),
             Some(json!("auto"))
@@ -578,7 +578,7 @@ mod tests {
         );
     }
 
-    /// tool 角色消息与 ToolResult 的组合
+    /// Encodes a `tool` role message that carries a single [`ToolResult`].
     #[test]
     fn tool_message_with_single_result_is_encoded_correctly() {
         use crate::types::ToolResult;
@@ -599,16 +599,16 @@ mod tests {
         let json = convert_message(&message).expect("tool message should be convertible");
         assert_eq!(json["role"], json!("tool"));
         assert_eq!(json["tool_call_id"], json!("call_1"));
-        // 非字符串输出会被序列化为字符串
+        // Non-string output payloads are serialized into a string.
         assert_eq!(json["content"], json!(r#"{"ok":true}"#));
     }
 
-    /// 多个 ToolResult 或缺少 call_id 应该触发校验错误
+    /// Ensures tool messages fail when multiple results or missing `call_id` occur.
     #[test]
     fn tool_message_with_invalid_results_should_fail() {
         use crate::types::ToolResult;
 
-        // 多个结果
+        // Multiple results trigger a validation error.
         let tool_result = ToolResult {
             call_id: Some("id".to_string()),
             output: json!(1),
@@ -632,7 +632,7 @@ mod tests {
             other => panic!("unexpected error: {other:?}"),
         }
 
-        // 缺少 call_id
+        // Missing `call_id` triggers a validation error.
         let msg_missing_id = Message {
             role: Role("tool".to_string()),
             name: None,

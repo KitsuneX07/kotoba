@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::error::LLMError;
 
-/// 解析 Anthropic 错误响应
+/// Parses error responses returned by the Anthropic Messages API.
 pub(crate) fn parse_anthropic_error(status: u16, body: &str) -> LLMError {
     #[derive(Deserialize)]
     struct ErrorBody {
@@ -44,7 +44,7 @@ pub(crate) fn parse_anthropic_error(status: u16, body: &str) -> LLMError {
         }
     }
 
-    // 兜底：无法解析为标准错误结构时，直接返回原始 body
+    // Fallback: if the payload cannot be parsed, surface the raw body.
     LLMError::Provider {
         provider: "anthropic_messages",
         message: format!("status {status}: {body}"),

@@ -21,7 +21,10 @@ use super::types::AnthropicMessageResponse;
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 const DEFAULT_VERSION: &str = "2023-06-01";
 
-/// Anthropic Messages Provider（兼容 Claude 3.x Messages API）
+/// Anthropic Messages provider compatible with the Claude 3.x Messages API.
+///
+/// Converts the unified [`ChatRequest`] format into Anthropic Messages payloads while
+/// handling both synchronous and streaming responses.
 pub struct AnthropicMessagesProvider {
     pub(crate) transport: DynHttpTransport,
     pub(crate) base_url: String,
@@ -32,7 +35,18 @@ pub struct AnthropicMessagesProvider {
 }
 
 impl AnthropicMessagesProvider {
-    /// 使用默认 base_url 与 anthropic-version 创建 Provider
+    /// Creates a provider with the default base URL and `anthropic-version` header.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::anthropic_messages::AnthropicMessagesProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = AnthropicMessagesProvider::new(transport, "test-key");
+    /// assert_eq!(provider.name(), "anthropic_messages");
+    /// ```
     pub fn new(transport: DynHttpTransport, api_key: impl Into<String>) -> Self {
         Self {
             transport,
@@ -44,25 +58,73 @@ impl AnthropicMessagesProvider {
         }
     }
 
-    /// 自定义 base_url，便于接入代理或兼容层
+    /// Overrides the base URL, which is helpful for proxies or compatibility layers.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::anthropic_messages::AnthropicMessagesProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = AnthropicMessagesProvider::new(transport, "key")
+    ///     .with_base_url("https://anthropic-proxy.local");
+    /// assert_eq!(provider.name(), "anthropic_messages");
+    /// ```
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
         self
     }
 
-    /// 自定义 Anthropic API 版本（anthropic-version）
+    /// Overrides the `anthropic-version` header value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::anthropic_messages::AnthropicMessagesProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = AnthropicMessagesProvider::new(transport, "key")
+    ///     .with_version("2023-11-01");
+    /// assert_eq!(provider.name(), "anthropic_messages");
+    /// ```
     pub fn with_version(mut self, version: impl Into<String>) -> Self {
         self.version = version.into();
         self
     }
 
-    /// 设置 anthropic-beta 头，支持逗号分隔的 beta 列表
+    /// Sets the optional `anthropic-beta` header (supports comma-separated beta names).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::anthropic_messages::AnthropicMessagesProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = AnthropicMessagesProvider::new(transport, "key")
+    ///     .with_beta("beta1,beta2");
+    /// assert_eq!(provider.name(), "anthropic_messages");
+    /// ```
     pub fn with_beta(mut self, beta: impl Into<String>) -> Self {
         self.beta = Some(beta.into());
         self
     }
 
-    /// 设置默认模型名称
+    /// Configures a default model when requests do not specify one.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::anthropic_messages::AnthropicMessagesProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = AnthropicMessagesProvider::new(transport, "key")
+    ///     .with_default_model("claude-3-sonnet");
+    /// assert!(provider.capabilities().supports_tools);
+    /// ```
     pub fn with_default_model(mut self, model: impl Into<String>) -> Self {
         self.default_model = Some(model.into());
         self
@@ -170,7 +232,7 @@ impl LLMProvider for AnthropicMessagesProvider {
             supports_audio_input: false,
             supports_video_input: false,
             supports_tools: true,
-            // Anthropic Messages 尚未在当前文档中正式暴露 JSON 模式，这里暂时保守为 false
+            // Anthropic Messages has not formally documented JSON mode yet, so leave this conservative.
             supports_structured_output: false,
             supports_parallel_tool_calls: true,
         }

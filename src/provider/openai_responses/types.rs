@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// 非流式 Responses 主体
+/// Non-streaming Responses payload.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub(crate) struct OpenAiResponsesResponse {
     pub(crate) id: String,
@@ -49,7 +49,7 @@ pub(crate) struct OpenAiResponsesResponse {
     pub(crate) metadata: Option<Value>,
 }
 
-/// usage 结构
+/// Usage structure returned by the Responses API.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub(crate) struct OpenAiResponsesUsage {
     #[serde(default)]
@@ -64,7 +64,7 @@ pub(crate) struct OpenAiResponsesUsage {
     pub(crate) output_tokens_details: Option<Value>,
 }
 
-/// SSE 事件 envelope
+/// SSE event envelope emitted during streaming.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub(crate) struct OpenAiResponsesStreamEvent {
     #[serde(rename = "type")]

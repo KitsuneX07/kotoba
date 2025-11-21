@@ -20,7 +20,10 @@ use super::types::OpenAiChatResponse;
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com";
 
-/// OpenAI Chat Completions Provider
+/// OpenAI Chat Completions provider implementation.
+///
+/// Converts the unified [`ChatRequest`] payload into OpenAI's Chat Completions schema and
+/// handles both non-streaming and SSE-based streaming endpoints.
 pub struct OpenAiChatProvider {
     pub(crate) transport: DynHttpTransport,
     pub(crate) base_url: String,
@@ -31,7 +34,18 @@ pub struct OpenAiChatProvider {
 }
 
 impl OpenAiChatProvider {
-    /// 创建带默认 base_url 的 Provider
+    /// Creates a provider that targets `https://api.openai.com` by default.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::openai_chat::OpenAiChatProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = OpenAiChatProvider::new(transport, "test-openai-key");
+    /// assert_eq!(provider.name(), "openai_chat");
+    /// ```
     pub fn new(transport: DynHttpTransport, api_key: impl Into<String>) -> Self {
         Self {
             transport,
@@ -43,25 +57,69 @@ impl OpenAiChatProvider {
         }
     }
 
-    /// 自定义 base_url
+    /// Overrides the base URL, enabling proxying or on-prem gateways.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::openai_chat::OpenAiChatProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = OpenAiChatProvider::new(transport, "key").with_base_url("https://openai-proxy.local");
+    /// assert_eq!(provider.name(), "openai_chat");
+    /// ```
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
         self
     }
 
-    /// 配置组织 ID
+    /// Adds the `OpenAI-Organization` header used in multi-tenant accounts.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::openai_chat::OpenAiChatProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = OpenAiChatProvider::new(transport, "key").with_organization("org_123");
+    /// assert_eq!(provider.name(), "openai_chat");
+    /// ```
     pub fn with_organization(mut self, organization: impl Into<String>) -> Self {
         self.organization = Some(organization.into());
         self
     }
 
-    /// 配置项目 ID
+    /// Adds the `OpenAI-Project` header for the Projects API.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::openai_chat::OpenAiChatProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = OpenAiChatProvider::new(transport, "key").with_project("proj_alpha");
+    /// assert_eq!(provider.name(), "openai_chat");
+    /// ```
     pub fn with_project(mut self, project: impl Into<String>) -> Self {
         self.project = Some(project.into());
         self
     }
 
-    /// 设置默认模型
+    /// Configures a default model when the [`ChatRequest`] omits one.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba::provider::openai_chat::OpenAiChatProvider;
+    /// # use kotoba::provider::LLMProvider;
+    /// # use kotoba::http::reqwest::default_dyn_transport;
+    /// let transport = default_dyn_transport().expect("transport");
+    /// let provider = OpenAiChatProvider::new(transport, "key").with_default_model("gpt-4.1-mini");
+    /// assert!(provider.capabilities().supports_stream);
+    /// ```
     pub fn with_default_model(mut self, model: impl Into<String>) -> Self {
         self.default_model = Some(model.into());
         self

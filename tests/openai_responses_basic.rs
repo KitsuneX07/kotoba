@@ -15,7 +15,7 @@ use kotoba::types::{
 use kotoba::{LLMProvider, OutputItem};
 use serde_json::json;
 
-/// Responses 基础文本对话联通性测试
+/// Connectivity test for basic OpenAI Responses text conversations.
 #[tokio::test]
 #[ignore = "requires valid OpenAI Responses endpoint"]
 async fn openai_responses_basic_text_dialog_live() {
@@ -29,14 +29,14 @@ async fn openai_responses_basic_text_dialog_live() {
         ..ChatOptions::default()
     };
 
-    // 与 openai_chat_basic 中类似，使用 developer + user 的简单问候对话
+    // Mirror the greeting conversation from openai_chat_basic using developer + user roles.
     let request = ChatRequest {
         messages: vec![
             Message {
                 role: Role("developer".to_string()),
                 name: None,
                 content: vec![ContentPart::Text(TextContent {
-                    text: "你是一个有帮助的助手。".to_string(),
+                    text: "You are a helpful assistant.".to_string(),
                 })],
                 metadata: None,
             },
@@ -44,7 +44,7 @@ async fn openai_responses_basic_text_dialog_live() {
                 role: Role::user(),
                 name: None,
                 content: vec![ContentPart::Text(TextContent {
-                    text: "你好！".to_string(),
+                    text: "Hello there!".to_string(),
                 })],
                 metadata: None,
             },
@@ -60,7 +60,7 @@ async fn openai_responses_basic_text_dialog_live() {
         Ok(resp) => resp,
         Err(LLMError::Auth { message }) => {
             eprintln!("skip openai_responses_basic_text_dialog_live: auth error: {message}");
-            // 提前返回，视作环境问题（例如配额不足），而非实现错误
+            // Treat this as an environment issue (quota, etc.) rather than an implementation bug.
             return;
         }
         Err(LLMError::RateLimit { message, .. }) => {
@@ -71,20 +71,20 @@ async fn openai_responses_basic_text_dialog_live() {
             eprintln!("skip openai_responses_basic_text_dialog_live: transport error: {message}");
             return;
         }
-        Err(other) => panic!("基础文本响应请求应成功: {other:?}"),
+        Err(other) => panic!("text response request should succeed: {other:?}"),
     };
-    let text = first_text_output(&response).expect("助手应返回文本内容");
+    let text = first_text_output(&response).expect("assistant should return text content");
     assert!(
-        text.contains("我"),
-        "为了降低不确定性，回答需要包含“我”，实际为：{text}"
+        text.contains("I"),
+        "response must contain 'I' to reduce ambiguity; actual: {text}"
     );
     assert!(
         matches!(response.finish_reason, Some(FinishReason::Stop)),
-        "简单问答应以 Stop 结束，对应 Responses 的 status=completed"
+        "simple Q&A should end with Stop (status=completed)"
     );
 }
 
-/// Responses 图像理解能力联通性测试
+/// Connectivity test for OpenAI Responses image understanding.
 #[tokio::test]
 #[ignore = "requires valid OpenAI Responses endpoint"]
 async fn openai_responses_basic_image_understanding_dialog_live() {
@@ -99,7 +99,7 @@ async fn openai_responses_basic_image_understanding_dialog_live() {
         ..ChatOptions::default()
     };
 
-    // 读取本地测试图片并编码为 base64，走 data URL 通道
+    // Read the local test image, encode it as base64, and send via data URL.
     let image_bytes = fs::read("tests/assets/Gfp-wisconsin-madison-the-nature-boardwalk.jpg")
         .expect("test image should be readable");
     let image_b64 = general_purpose::STANDARD.encode(&image_bytes);
@@ -110,7 +110,7 @@ async fn openai_responses_basic_image_understanding_dialog_live() {
             name: None,
             content: vec![
                 ContentPart::Text(TextContent {
-                    text: "这张图片里有什么？".to_string(),
+                    text: "What is in this picture?".to_string(),
                 }),
                 ContentPart::Image(ImageContent {
                     source: ImageSource::Base64 {
@@ -150,20 +150,20 @@ async fn openai_responses_basic_image_understanding_dialog_live() {
             );
             return;
         }
-        Err(other) => panic!("图像理解 Responses 请求应成功: {other:?}"),
+        Err(other) => panic!("image-understanding Responses request should succeed: {other:?}"),
     };
-    let text = first_text_output(&response).expect("助手应描述图像内容");
+    let text = first_text_output(&response).expect("assistant should describe the image");
     assert!(
-        text.contains("草"),
-        "回答需包含“草”方便匹配，实际为：{text}"
+        text.contains("grass"),
+        "response must mention grass; actual: {text}"
     );
     assert!(
         matches!(response.finish_reason, Some(FinishReason::Stop)),
-        "图像描述通常以 Stop 结束，对应 status=completed"
+        "image descriptions typically end with Stop (status=completed)"
     );
 }
 
-/// Responses 函数调用联通性测试
+/// Connectivity test for OpenAI Responses function calls.
 #[tokio::test]
 #[ignore = "requires valid OpenAI Responses endpoint"]
 async fn openai_responses_basic_tool_call_dialog_live() {
@@ -182,7 +182,7 @@ async fn openai_responses_basic_tool_call_dialog_live() {
             role: Role::user(),
             name: None,
             content: vec![ContentPart::Text(TextContent {
-                text: "波士顿今天的天气怎么样？请调用 get_current_weather 工具，并在工具参数中使用 Boston, MA。"
+                text: "What is Boston's weather today? Call get_current_weather with Boston, MA."
                     .to_string(),
             })],
             metadata: None,
@@ -190,13 +190,13 @@ async fn openai_responses_basic_tool_call_dialog_live() {
         options,
         tools: vec![ToolDefinition {
             name: "get_current_weather".to_string(),
-            description: Some("获取指定位置的当前天气".to_string()),
+            description: Some("Get the current weather for the specified location".to_string()),
             input_schema: Some(json!({
                 "type": "object",
                 "properties": {
                     "location": {
                         "type": "string",
-                        "description": "城市和州，例如 San Francisco, CA"
+                        "description": "City and state, e.g., San Francisco, CA"
                     },
                     "unit": {
                         "type": "string",
@@ -231,7 +231,7 @@ async fn openai_responses_basic_tool_call_dialog_live() {
             );
             return;
         }
-        Err(other) => panic!("Responses 函数调用应成功: {other:?}"),
+        Err(other) => panic!("Responses function call should succeed: {other:?}"),
     };
     let tool_call = response.outputs.iter().find_map(|item| {
         if let OutputItem::ToolCall { call, .. } = item {
@@ -240,8 +240,11 @@ async fn openai_responses_basic_tool_call_dialog_live() {
             None
         }
     });
-    assert!(tool_call.is_some(), "模型响应中必须包含函数工具调用");
-    let tool_call = tool_call.expect("已在上方保证存在工具调用");
+    assert!(
+        tool_call.is_some(),
+        "model response must include a function tool call"
+    );
+    let tool_call = tool_call.expect("tool call should exist per assertion above");
     let location = tool_call
         .arguments
         .get("location")
@@ -249,7 +252,7 @@ async fn openai_responses_basic_tool_call_dialog_live() {
         .unwrap_or_default();
     assert!(
         location.contains("Boston"),
-        "工具参数应包含 Boston, MA，实际为：{location}"
+        "tool argument should contain Boston, MA; actual: {location}"
     );
 }
 
@@ -259,7 +262,7 @@ fn build_stream_request(model: &str) -> ChatRequest {
         ..ChatOptions::default()
     };
 
-    // 与 openai_chat_live_sync_and_stream 类似，这里用英文提示，方便兼容各种模型
+    // Mirror openai_chat_live_sync_and_stream with English prompts to work across models.
     ChatRequest {
         messages: vec![
             Message {
@@ -287,7 +290,7 @@ fn build_stream_request(model: &str) -> ChatRequest {
     }
 }
 
-/// Responses 同步与流式调用联通性测试
+/// Connectivity test covering synchronous and streaming Responses calls.
 #[tokio::test]
 #[ignore = "requires valid OpenAI Responses endpoint"]
 async fn openai_responses_live_sync_and_stream() {
@@ -317,7 +320,7 @@ async fn openai_responses_live_sync_and_stream() {
     };
     assert!(
         !response.outputs.is_empty(),
-        "Responses 同步调用应返回至少一个输出项"
+        "Responses sync call should return at least one output"
     );
 
     let mut stream = match provider.stream_chat(request).await {
@@ -350,7 +353,7 @@ async fn openai_responses_live_sync_and_stream() {
     }
     assert!(
         saw_chunk,
-        "Responses 流式接口应至少产生一个包含事件的数据 chunk"
+        "Responses streaming interface should emit at least one chunk with events"
     );
 }
 

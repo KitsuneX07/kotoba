@@ -99,7 +99,7 @@ fn convert_message_output(item: &Value) -> Result<Message, LLMError> {
                         }
                     }
                     _ => {
-                        // 对于 refusal / file_citation / url_citation 等，先整体透传为 Data
+                        // Forward refusal/file_citation/url_citation blocks as Data for callers.
                         content_parts.push(ContentPart::Data { data: part.clone() });
                     }
                 }
@@ -139,7 +139,7 @@ fn convert_function_call_output(item: &Value) -> Result<ToolCall, LLMError> {
     let arguments = serde_json::from_str(&arguments_raw).unwrap_or(Value::String(arguments_raw));
 
     Ok(ToolCall {
-        // Chat Completions 将 id 用作后续 tool_result 的关联 ID，这里保持一致，用 call_id 作为泛化后的 id
+        // Chat Completions use `id` to correlate tool_result entries; reuse `call_id` here.
         id: call_id,
         name,
         arguments,
@@ -274,7 +274,7 @@ mod tests {
         assert_eq!(mapped.provider.provider, "openai_responses");
         assert_eq!(mapped.provider.endpoint.as_deref(), Some("endpoint"));
 
-        // 有一个 Message 输出
+        // Expect a single Message output.
         assert_eq!(mapped.outputs.len(), 1);
         match &mapped.outputs[0] {
             OutputItem::Message { message, index } => {

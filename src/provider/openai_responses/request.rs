@@ -7,7 +7,7 @@ use crate::types::{
     ToolKind, VideoContent,
 };
 
-/// 构建 OpenAI Responses 请求体
+/// Builds the request body expected by the OpenAI Responses API.
 pub(crate) fn build_openai_responses_body(
     request: &ChatRequest,
     model: &str,
@@ -16,7 +16,7 @@ pub(crate) fn build_openai_responses_body(
     let mut body = Map::new();
     body.insert("model".to_string(), Value::String(model.to_string()));
 
-    // 将 system / developer 消息折叠为 instructions，其余作为 input 消息
+    // Fold system/developer messages into `instructions` and treat the rest as `input`.
     let mut instructions_parts = Vec::new();
     let mut input_messages = Vec::new();
     for message in &request.messages {
@@ -41,7 +41,7 @@ pub(crate) fn build_openai_responses_body(
         body.insert("instructions".to_string(), Value::String(instructions));
     }
 
-    // 采样与控制参数
+    // Sampling and control parameters.
     if let Some(temperature) = request.options.temperature {
         body.insert("temperature".to_string(), Value::from(temperature));
     }
@@ -55,7 +55,7 @@ pub(crate) fn build_openai_responses_body(
         body.insert("parallel_tool_calls".to_string(), Value::from(parallel));
     }
 
-    // reasoning 映射：Responses 当前只正式文档化 effort 与若干附加字段
+    // Map reasoning options; Responses officially documents effort plus a few extras.
     if let Some(reasoning) = &request.options.reasoning {
         let mut reasoning_obj = Map::new();
         if let Some(effort) = &reasoning.effort {
@@ -64,7 +64,7 @@ pub(crate) fn build_openai_responses_body(
                 Value::String(format_reasoning_effort(effort)),
             );
         }
-        // 其余字段透传到 reasoning 对象中，留给调用方自行控制
+        // Forward remaining fields verbatim so callers can control them.
         for (k, v) in &reasoning.extra {
             reasoning_obj.insert(k.clone(), v.clone());
         }
@@ -86,21 +86,21 @@ pub(crate) fn build_openai_responses_body(
         }
     }
 
-    // 响应格式 -> text.format
+    // Response format → `text.format`.
     if let Some(format) = &request.response_format {
-        // 若调用方在 extra 中手工设置了 text，则优先尊重 extra
+        // If callers already set `text` via `extra`, honor that configuration first.
         if !body.contains_key("text") {
             body.insert("text".to_string(), convert_text_config(format));
         }
     }
 
-    // metadata 直接映射
+    // Metadata is mapped directly.
     if let Some(metadata) = &request.metadata {
         let meta: Map<String, Value> = metadata.clone().into_iter().collect();
         body.insert("metadata".to_string(), Value::Object(meta));
     }
 
-    // 额外 provider 配置（如 include / service_tier / user / previous_response_id 等）
+    // Extra provider settings (include, service_tier, user, previous_response_id, etc.).
     for (k, v) in &request.options.extra {
         body.insert(k.clone(), v.clone());
     }
@@ -147,7 +147,7 @@ fn convert_input_message(message: &Message) -> Result<Value, LLMError> {
         }
     }
 
-    // 对于 Responses，content 可以是字符串或数组；我们统一使用数组形式，兼容多模态输入
+    // Responses accepts strings or arrays for content; always use arrays to support multimodal input.
     obj.insert("content".to_string(), Value::Array(content_items));
 
     Ok(Value::Object(obj))
@@ -167,7 +167,7 @@ fn convert_content_part(part: &ContentPart) -> Result<Value, LLMError> {
                     "detail": detail
                 })),
                 ImageSource::Base64 { data, mime_type } => {
-                    // 与 Chat 接口保持一致：构造 data: 协议前缀的 Data URL
+                    // Match the Chat API by constructing `data:` URLs for inline content.
                     let mime = mime_type.as_deref().unwrap_or("application/octet-stream");
                     Ok(json!({
                         "type": "input_image",
@@ -236,7 +236,7 @@ fn convert_tools(tools: &[ToolDefinition]) -> Result<Vec<Value>, LLMError> {
                 if let Some(schema) = &tool.input_schema {
                     obj.insert("parameters".to_string(), schema.clone());
                 }
-                // Responses 文档中函数工具默认 strict = true，如无特殊需求可以在 metadata 中覆盖
+                // Responses sets function tools to strict=true by default; metadata can override when necessary.
                 obj.insert("strict".to_string(), Value::Bool(true));
                 if let Some(meta) = &tool.metadata {
                     for (k, v) in meta {
@@ -300,12 +300,12 @@ fn convert_text_config(format: &ResponseFormat) -> Value {
         ResponseFormat::JsonSchema { schema } => json!({
             "format": {
                 "type": "json_schema",
-                // 为简单起见使用固定名称，真实场景可以通过 Custom 格式完全自定义
+                // Use a fixed name for simplicity; callers can fully customize via the Custom variant.
                 "name": "response",
                 "schema": schema
             }
         }),
-        // Custom 视为完整的 text 对象，调用方可以自定义 format 或其他字段
+        // Treat Custom as the full `text` object so callers can set `format` or extra fields.
         ResponseFormat::Custom(value) => value.clone(),
     }
 }
@@ -335,7 +335,7 @@ mod tests {
         ReasoningOptions, Role,
     };
 
-    /// 仅包含 user 文本消息的最简请求体
+    /// Builds the minimal payload containing a single user text message.
     #[test]
     fn build_body_with_basic_text_input() {
         let request = ChatRequest {
@@ -398,7 +398,7 @@ mod tests {
                     role: Role::system(),
                     name: None,
                     content: vec![ContentPart::Text(TextContent {
-                        text: "你是一个有帮助的助手。".to_string(),
+                        text: "You are a helpful assistant.".to_string(),
                     })],
                     metadata: None,
                 },
@@ -406,7 +406,7 @@ mod tests {
                     role: Role("developer".to_string()),
                     name: None,
                     content: vec![ContentPart::Text(TextContent {
-                        text: "请用简体中文回答。".to_string(),
+                        text: "Please answer in English.".to_string(),
                     })],
                     metadata: None,
                 },
@@ -414,7 +414,7 @@ mod tests {
                     role: Role::user(),
                     name: None,
                     content: vec![ContentPart::Text(TextContent {
-                        text: "你好！".to_string(),
+                        text: "Hello!".to_string(),
                     })],
                     metadata: None,
                 },
@@ -430,7 +430,7 @@ mod tests {
             build_openai_responses_body(&request, "gpt-4.1", true).expect("body should be built");
 
         assert_eq!(body["model"], json!("gpt-4.1"));
-        // 浮点字段使用近似比较
+        // Compare floating-point values approximately.
         let temperature = body["temperature"].as_f64().unwrap();
         assert!((temperature - 0.3).abs() < 1e-6);
         let top_p = body["top_p"].as_f64().unwrap();
@@ -446,14 +446,14 @@ mod tests {
         assert_eq!(reasoning["effort"], json!("high"));
         assert_eq!(reasoning["reasoning_custom"], json!("custom"));
 
-        // instructions 折叠 system + developer 文本
+        // `instructions` contains the folded system and developer text.
         let instructions = body["instructions"]
             .as_str()
             .expect("instructions should be string");
-        assert!(instructions.contains("你是一个有帮助的助手。"));
-        assert!(instructions.contains("请用简体中文回答。"));
+        assert!(instructions.contains("You are a helpful assistant."));
+        assert!(instructions.contains("Please answer in English."));
 
-        // input 中只包含 user 消息
+        // `input` contains user messages only.
         let input = body["input"].as_array().expect("input should be array");
         assert_eq!(input.len(), 1);
         assert_eq!(input[0]["role"], json!("user"));
@@ -463,7 +463,7 @@ mod tests {
         assert_eq!(text_cfg["format"]["type"], json!("text"));
     }
 
-    /// 图像输入映射到 input_image
+    /// Verifies that image input is mapped to `input_image` entries.
     #[test]
     fn convert_image_content_to_input_image() {
         let request = ChatRequest {

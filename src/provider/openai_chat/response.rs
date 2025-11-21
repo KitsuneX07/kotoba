@@ -217,14 +217,14 @@ mod tests {
             Some("https://api.openai.com/v1/chat/completions")
         );
 
-        // 有一个 Message 输出
+        // Expect a single Message output.
         assert_eq!(mapped.outputs.len(), 1);
         match &mapped.outputs[0] {
             OutputItem::Message { message, index } => {
                 assert_eq!(*index, 0);
                 assert_eq!(message.role.0, "assistant");
                 assert_eq!(message.name, None);
-                // 内容是单一文本块
+                // Content contains a single text block.
                 assert_eq!(message.content.len(), 1);
                 match &message.content[0] {
                     ContentPart::Text(TextContent { text }) => {
@@ -236,7 +236,7 @@ mod tests {
             other => panic!("unexpected output item: {other:?}"),
         }
 
-        // usage 映射
+        // Validate usage mapping.
         let usage = mapped.usage.expect("usage should be present");
         assert_eq!(usage.prompt_tokens, Some(10));
         assert_eq!(usage.completion_tokens, Some(5));
@@ -283,7 +283,7 @@ mod tests {
         let mapped =
             map_response(resp, "openai_chat", "endpoint".into()).expect("map_response should work");
 
-        // 既有 Message 又有 ToolCall 两个输出
+        // Both Message and ToolCall outputs are produced.
         assert_eq!(mapped.outputs.len(), 2);
         let mut saw_message = false;
         let mut saw_tool_call = false;
@@ -297,7 +297,7 @@ mod tests {
                     saw_tool_call = true;
                     assert_eq!(call.id.as_deref(), Some("call_1"));
                     assert_eq!(call.name, "get_weather");
-                    // 参数解析为 JSON 对象
+                    // Arguments are parsed as a JSON object.
                     assert_eq!(call.arguments["location"], json!("Boston, MA"));
                     assert_eq!(call.kind, ToolCallKind::Function);
                 }
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn convert_content_part_response_text_and_image() {
-        // 文本
+        // Text part.
         let part_text = OpenAiMessagePart {
             kind: "text".to_string(),
             text: Some("hi".to_string()),
@@ -326,7 +326,7 @@ mod tests {
             other => panic!("unexpected content: {other:?}"),
         }
 
-        // 图像
+        // Image part.
         let part_image = OpenAiMessagePart {
             kind: "image_url".to_string(),
             text: None,

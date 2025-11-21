@@ -6,26 +6,168 @@ use crate::error::LLMError;
 use crate::provider::{ChatStream, DynProvider};
 use crate::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
 
-/// LLM 调用入口 负责维护已注册的 Provider
+/// Routes chat requests through the set of registered providers.
+///
+/// The client stores provider handles in-memory, making it trivial to share one instance
+/// across the application and pick the right backend per request.
 pub struct LLMClient {
     providers: HashMap<String, DynProvider>,
 }
 
 impl LLMClient {
-    /// 创建 Builder 便于后续注册 Provider
+    /// Creates a builder used to register providers before constructing the client.
+    ///
+    /// The builder enforces unique handles and lets applications inject mocked providers
+    /// in tests. Once all handles are registered, call [`LLMClientBuilder::build`] to
+    /// obtain an [`LLMClient`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use std::sync::Arc;
+    /// # use async_trait::async_trait;
+    /// # use kotoba::client::LLMClient;
+    /// # use kotoba::error::LLMError;
+    /// # use kotoba::provider::{LLMProvider, ChatStream};
+    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use futures_util::stream;
+    /// # struct DummyProvider;
+    /// # #[async_trait]
+    /// # impl LLMProvider for DummyProvider {
+    /// #     async fn chat(&self, _request: ChatRequest) -> Result<ChatResponse, LLMError> {
+    /// #         Err(LLMError::NotImplemented { feature: "dummy" })
+    /// #     }
+    /// #     async fn stream_chat(&self, _request: ChatRequest) -> Result<ChatStream, LLMError> {
+    /// #         Ok(Box::pin(stream::empty()))
+    /// #     }
+    /// #     fn capabilities(&self) -> CapabilityDescriptor { CapabilityDescriptor::default() }
+    /// #     fn name(&self) -> &'static str { "dummy" }
+    /// # }
+    /// let client = LLMClient::builder()
+    ///     .register_handle("dummy", Arc::new(DummyProvider))
+    ///     .expect("unique handle")
+    ///     .build();
+    /// assert_eq!(client.handles(), vec!["dummy".to_string()]);
+    /// ```
     pub fn builder() -> LLMClientBuilder {
         LLMClientBuilder {
             providers: HashMap::new(),
         }
     }
 
-    /// 发送同步聊天请求
+    /// Sends a chat request to the provider registered under `handle`.
+    ///
+    /// The provided [`ChatRequest`] is forwarded verbatim to the selected provider. Use
+    /// this method when the full response is required before proceeding.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use std::sync::Arc;
+    /// # use async_trait::async_trait;
+    /// # use kotoba::client::LLMClient;
+    /// # use kotoba::error::LLMError;
+    /// # use kotoba::provider::{LLMProvider, ChatStream};
+    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse, Message, Role};
+    /// # use futures_util::stream;
+    /// # struct DummyProvider;
+    /// # #[async_trait]
+    /// # impl LLMProvider for DummyProvider {
+    /// #     async fn chat(&self, _request: ChatRequest) -> Result<ChatResponse, LLMError> {
+    /// #         Err(LLMError::NotImplemented { feature: "dummy" })
+    /// #     }
+    /// #     async fn stream_chat(&self, _request: ChatRequest) -> Result<ChatStream, LLMError> {
+    /// #         Ok(Box::pin(stream::empty()))
+    /// #     }
+    /// #     fn capabilities(&self) -> CapabilityDescriptor { CapabilityDescriptor::default() }
+    /// #     fn name(&self) -> &'static str { "dummy" }
+    /// # }
+    /// # fn client() -> LLMClient {
+    /// #     LLMClient::builder()
+    /// #         .register_handle("dummy", Arc::new(DummyProvider))
+    /// #         .expect("unique handle")
+    /// #         .build()
+    /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let request = ChatRequest {
+    ///     messages: vec![Message { role: Role::assistant(), name: None, content: Vec::new(), metadata: None }],
+    ///     options: Default::default(),
+    ///     tools: Vec::new(),
+    ///     tool_choice: None,
+    ///     response_format: None,
+    ///     metadata: None,
+    /// };
+    /// let result = client().chat("dummy", request).await;
+    /// assert!(result.is_err());
+    /// # });
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LLMError::Validation`] when `handle` is not registered, or propagates any
+    /// error raised by the underlying provider implementation.
     pub async fn chat(&self, handle: &str, request: ChatRequest) -> Result<ChatResponse, LLMError> {
         let provider = self.get_provider(handle)?;
         provider.chat(request).await
     }
 
-    /// 发起流式聊天请求
+    /// Initiates a streaming chat request.
+    ///
+    /// This method keeps the HTTP connection open and yields incremental
+    /// [`crate::types::ChatChunk`]
+    /// values through the returned [`ChatStream`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use std::sync::Arc;
+    /// # use async_trait::async_trait;
+    /// # use kotoba::client::LLMClient;
+    /// # use kotoba::error::LLMError;
+    /// # use kotoba::provider::{LLMProvider, ChatStream};
+    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use futures_util::stream;
+    /// # struct DummyProvider;
+    /// # #[async_trait]
+    /// # impl LLMProvider for DummyProvider {
+    /// #     async fn chat(&self, _request: ChatRequest) -> Result<ChatResponse, LLMError> {
+    /// #         Err(LLMError::NotImplemented { feature: "dummy" })
+    /// #     }
+    /// #     async fn stream_chat(&self, _request: ChatRequest) -> Result<ChatStream, LLMError> {
+    /// #         Ok(Box::pin(stream::empty()))
+    /// #     }
+    /// #     fn capabilities(&self) -> CapabilityDescriptor { CapabilityDescriptor::default() }
+    /// #     fn name(&self) -> &'static str { "dummy" }
+    /// # }
+    /// # fn client() -> LLMClient {
+    /// #     LLMClient::builder()
+    /// #         .register_handle("dummy", Arc::new(DummyProvider))
+    /// #         .expect("unique handle")
+    /// #         .build()
+    /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let request = ChatRequest {
+    ///     messages: Vec::new(),
+    ///     options: Default::default(),
+    ///     tools: Vec::new(),
+    ///     tool_choice: None,
+    ///     response_format: None,
+    ///     metadata: None,
+    /// };
+    /// let chunks = client()
+    ///     .stream_chat("dummy", request)
+    ///     .await;
+    /// assert!(chunks.is_ok());
+    /// # });
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LLMError::Validation`] when the handle is missing or any transport/provider
+    /// level error bubbled up during streaming setup.
     pub async fn stream_chat(
         &self,
         handle: &str,
@@ -35,18 +177,118 @@ impl LLMClient {
         provider.stream_chat(request).await
     }
 
-    /// 返回当前已注册的句柄
+    /// Lists every handle currently registered on the client.
+    ///
+    /// The returned vector is independent from the internal storage, so callers can sort or
+    /// mutate it without affecting the client state.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use std::sync::Arc;
+    /// # use async_trait::async_trait;
+    /// # use kotoba::client::LLMClient;
+    /// # use kotoba::error::LLMError;
+    /// # use kotoba::provider::{LLMProvider, ChatStream};
+    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use futures_util::stream;
+    /// # struct DummyProvider;
+    /// # #[async_trait]
+    /// # impl LLMProvider for DummyProvider {
+    /// #     async fn chat(&self, _request: ChatRequest) -> Result<ChatResponse, LLMError> { unreachable!() }
+    /// #     async fn stream_chat(&self, _request: ChatRequest) -> Result<ChatStream, LLMError> { Ok(Box::pin(stream::empty())) }
+    /// #     fn capabilities(&self) -> CapabilityDescriptor { CapabilityDescriptor::default() }
+    /// #     fn name(&self) -> &'static str { "dummy" }
+    /// # }
+    /// let client = LLMClient::builder()
+    ///     .register_handle("dummy", Arc::new(DummyProvider))
+    ///     .expect("unique handle")
+    ///     .build();
+    /// assert_eq!(client.handles(), vec!["dummy".to_string()]);
+    /// ```
     pub fn handles(&self) -> Vec<String> {
         self.providers.keys().cloned().collect()
     }
 
-    /// 查询指定句柄的能力描述
+    /// Returns the capability descriptor associated with `handle`.
+    ///
+    /// Capability descriptors make it easy to filter providers based on streaming support
+    /// or multimodal input availability before placing a request.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use std::sync::Arc;
+    /// # use async_trait::async_trait;
+    /// # use kotoba::client::LLMClient;
+    /// # use kotoba::error::LLMError;
+    /// # use kotoba::provider::{LLMProvider, ChatStream};
+    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use futures_util::stream;
+    /// # struct DummyProvider;
+    /// # #[async_trait]
+    /// # impl LLMProvider for DummyProvider {
+    /// #     async fn chat(&self, _request: ChatRequest) -> Result<ChatResponse, LLMError> { unreachable!() }
+    /// #     async fn stream_chat(&self, _request: ChatRequest) -> Result<ChatStream, LLMError> { Ok(Box::pin(stream::empty())) }
+    /// #     fn capabilities(&self) -> CapabilityDescriptor {
+    /// #         CapabilityDescriptor { supports_stream: true, ..Default::default() }
+    /// #     }
+    /// #     fn name(&self) -> &'static str { "dummy" }
+    /// # }
+    /// let client = LLMClient::builder()
+    ///     .register_handle("dummy", Arc::new(DummyProvider))
+    ///     .expect("unique handle")
+    ///     .build();
+    /// let caps = client.capabilities("dummy").expect("registered handle");
+    /// assert!(caps.supports_stream);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LLMError::Validation`] if the handle is unknown.
     pub fn capabilities(&self, handle: &str) -> Result<CapabilityDescriptor, LLMError> {
         let provider = self.get_provider(handle)?;
         Ok(provider.capabilities())
     }
 
-    /// 返回所有支持工具调用的句柄列表
+    /// Lists handles whose providers declare tool-calling support.
+    ///
+    /// Iterate over the result whenever tool execution is required and pick any handle in
+    /// the list to guarantee compatibility.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use std::sync::Arc;
+    /// # use async_trait::async_trait;
+    /// # use kotoba::client::LLMClient;
+    /// # use kotoba::error::LLMError;
+    /// # use kotoba::provider::{LLMProvider, ChatStream};
+    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use futures_util::stream;
+    /// # struct DummyProvider { tools: bool }
+    /// # #[async_trait]
+    /// # impl LLMProvider for DummyProvider {
+    /// #     async fn chat(&self, _request: ChatRequest) -> Result<ChatResponse, LLMError> { unreachable!() }
+    /// #     async fn stream_chat(&self, _request: ChatRequest) -> Result<ChatStream, LLMError> { Ok(Box::pin(stream::empty())) }
+    /// #     fn capabilities(&self) -> CapabilityDescriptor {
+    /// #         CapabilityDescriptor { supports_tools: self.tools, ..Default::default() }
+    /// #     }
+    /// #     fn name(&self) -> &'static str { "dummy" }
+    /// # }
+    /// let client = LLMClient::builder()
+    ///     .register_handle("tools", Arc::new(DummyProvider { tools: true }) as _)
+    ///     .expect("tools handle")
+    ///     .register_handle("no-tools", Arc::new(DummyProvider { tools: false }) as _)
+    ///     .expect("no-tools handle")
+    ///     .build();
+    /// let mut handles = client.handles_supporting_tools();
+    /// handles.sort();
+    /// assert_eq!(handles, vec!["tools".to_string()]);
+    /// ```
     pub fn handles_supporting_tools(&self) -> Vec<String> {
         self.providers
             .iter()
@@ -60,7 +302,42 @@ impl LLMClient {
             .collect()
     }
 
-    /// 返回所有支持流式输出的句柄列表
+    /// Lists handles whose providers support streaming responses.
+    ///
+    /// Use the resulting handles to ensure [`LLMClient::stream_chat`] succeeds without
+    /// falling back to synchronous mode.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use std::sync::Arc;
+    /// # use async_trait::async_trait;
+    /// # use kotoba::client::LLMClient;
+    /// # use kotoba::error::LLMError;
+    /// # use kotoba::provider::{LLMProvider, ChatStream};
+    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use futures_util::stream;
+    /// # struct DummyProvider { stream: bool }
+    /// # #[async_trait]
+    /// # impl LLMProvider for DummyProvider {
+    /// #     async fn chat(&self, _request: ChatRequest) -> Result<ChatResponse, LLMError> { unreachable!() }
+    /// #     async fn stream_chat(&self, _request: ChatRequest) -> Result<ChatStream, LLMError> { Ok(Box::pin(stream::empty())) }
+    /// #     fn capabilities(&self) -> CapabilityDescriptor {
+    /// #         CapabilityDescriptor { supports_stream: self.stream, ..Default::default() }
+    /// #     }
+    /// #     fn name(&self) -> &'static str { "dummy" }
+    /// # }
+    /// let client = LLMClient::builder()
+    ///     .register_handle("stream", Arc::new(DummyProvider { stream: true }) as _)
+    ///     .expect("stream handle")
+    ///     .register_handle("sync", Arc::new(DummyProvider { stream: false }) as _)
+    ///     .expect("sync handle")
+    ///     .build();
+    /// let mut handles = client.handles_supporting_stream();
+    /// handles.sort();
+    /// assert_eq!(handles, vec!["stream".to_string()]);
+    /// ```
     pub fn handles_supporting_stream(&self) -> Vec<String> {
         self.providers
             .iter()
@@ -84,13 +361,111 @@ impl LLMClient {
     }
 }
 
-/// 便于依赖注入与测试的轻量 Client 抽象
+/// Lightweight client abstraction used for dependency injection.
+///
+/// The trait can be mocked in tests or implemented by alternative clients that still
+/// provide the same ergonomic interface for chat and streaming calls.
 #[async_trait]
 pub trait LLMClientLike: Send + Sync {
-    /// 发送同步聊天请求
+    /// Sends a chat request through the trait object.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use async_trait::async_trait;
+    /// # use kotoba::client::{LLMClient, LLMClientLike};
+    /// # use kotoba::error::LLMError;
+    /// # use kotoba::provider::{LLMProvider, ChatStream};
+    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use futures_util::stream;
+    /// # struct DummyProvider;
+    /// # #[async_trait]
+    /// # impl LLMProvider for DummyProvider {
+    /// #     async fn chat(&self, _request: ChatRequest) -> Result<ChatResponse, LLMError> {
+    /// #         Err(LLMError::NotImplemented { feature: "dummy" })
+    /// #     }
+    /// #     async fn stream_chat(&self, _request: ChatRequest) -> Result<ChatStream, LLMError> {
+    /// #         Ok(Box::pin(stream::empty()))
+    /// #     }
+    /// #     fn capabilities(&self) -> CapabilityDescriptor { CapabilityDescriptor::default() }
+    /// #     fn name(&self) -> &'static str { "dummy" }
+    /// # }
+    /// # fn build_client() -> LLMClient {
+    /// #     LLMClient::builder()
+    /// #         .register_handle("dummy", Arc::new(DummyProvider))
+    /// #         .expect("unique handle")
+    /// #         .build()
+    /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let client = build_client();
+    /// let obj: &dyn LLMClientLike = &client;
+    /// let request = ChatRequest {
+    ///     messages: Vec::new(),
+    ///     options: Default::default(),
+    ///     tools: Vec::new(),
+    ///     tool_choice: None,
+    ///     response_format: None,
+    ///     metadata: None,
+    /// };
+    /// let result = obj.chat("dummy", request).await;
+    /// assert!(result.is_err());
+    /// # });
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`LLMError::Validation`] if the handle is missing or any provider failure
+    /// bubbled up.
     async fn chat(&self, handle: &str, request: ChatRequest) -> Result<ChatResponse, LLMError>;
 
-    /// 发起流式聊天请求
+    /// Starts a streaming chat request through the trait object.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use async_trait::async_trait;
+    /// # use kotoba::client::{LLMClient, LLMClientLike};
+    /// # use kotoba::error::LLMError;
+    /// # use kotoba::provider::{LLMProvider, ChatStream};
+    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use futures_util::stream;
+    /// # struct DummyProvider;
+    /// # #[async_trait]
+    /// # impl LLMProvider for DummyProvider {
+    /// #     async fn chat(&self, _request: ChatRequest) -> Result<ChatResponse, LLMError> { unreachable!() }
+    /// #     async fn stream_chat(&self, _request: ChatRequest) -> Result<ChatStream, LLMError> { Ok(Box::pin(stream::empty())) }
+    /// #     fn capabilities(&self) -> CapabilityDescriptor { CapabilityDescriptor::default() }
+    /// #     fn name(&self) -> &'static str { "dummy" }
+    /// # }
+    /// # fn build_client() -> LLMClient {
+    /// #     LLMClient::builder()
+    /// #         .register_handle("dummy", Arc::new(DummyProvider))
+    /// #         .expect("unique handle")
+    /// #         .build()
+    /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let client = build_client();
+    /// let obj: &dyn LLMClientLike = &client;
+    /// let result = obj
+    ///     .stream_chat("dummy", ChatRequest {
+    ///         messages: Vec::new(),
+    ///         options: Default::default(),
+    ///         tools: Vec::new(),
+    ///         tool_choice: None,
+    ///         response_format: None,
+    ///         metadata: None,
+    ///     })
+    ///     .await;
+    /// assert!(result.is_ok());
+    /// # });
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LLMError::Validation`] when the handle is unknown or forwards any
+    /// transport/provider error.
     async fn stream_chat(&self, handle: &str, request: ChatRequest)
     -> Result<ChatStream, LLMError>;
 }
@@ -110,13 +485,44 @@ impl LLMClientLike for LLMClient {
     }
 }
 
-/// 负责注册 Provider 的 Builder
+/// Builder used to register providers and construct an [`LLMClient`].
 pub struct LLMClientBuilder {
     providers: HashMap<String, DynProvider>,
 }
 
 impl LLMClientBuilder {
-    /// 注册一个句柄对应的 Provider
+    /// Registers a provider under a unique handle.
+    ///
+    /// Use this method repeatedly to add each backend. Handles must be unique across the
+    /// builder lifetime.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use async_trait::async_trait;
+    /// # use kotoba::client::LLMClient;
+    /// # use kotoba::error::LLMError;
+    /// # use kotoba::provider::{LLMProvider, ChatStream};
+    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use futures_util::stream;
+    /// # struct DummyProvider;
+    /// # #[async_trait]
+    /// # impl LLMProvider for DummyProvider {
+    /// #     async fn chat(&self, _request: ChatRequest) -> Result<ChatResponse, LLMError> { unreachable!() }
+    /// #     async fn stream_chat(&self, _request: ChatRequest) -> Result<ChatStream, LLMError> { Ok(Box::pin(stream::empty())) }
+    /// #     fn capabilities(&self) -> CapabilityDescriptor { CapabilityDescriptor::default() }
+    /// #     fn name(&self) -> &'static str { "dummy" }
+    /// # }
+    /// let builder = LLMClient::builder()
+    ///     .register_handle("primary", Arc::new(DummyProvider))
+    ///     .expect("unique handle");
+    /// assert!(builder.build().handles().contains(&"primary".to_string()));
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LLMError::Validation`] if the provided handle already exists.
     pub fn register_handle<S: Into<String>>(
         mut self,
         handle: S,
@@ -132,7 +538,34 @@ impl LLMClientBuilder {
         Ok(self)
     }
 
-    /// 构建最终的 LLMClient
+    /// Consumes the builder and returns the configured [`LLMClient`].
+    ///
+    /// This method finalizes registration, moving the provider map into the client.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use async_trait::async_trait;
+    /// # use kotoba::client::LLMClient;
+    /// # use kotoba::error::LLMError;
+    /// # use kotoba::provider::{LLMProvider, ChatStream};
+    /// # use kotoba::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use futures_util::stream;
+    /// # struct DummyProvider;
+    /// # #[async_trait]
+    /// # impl LLMProvider for DummyProvider {
+    /// #     async fn chat(&self, _request: ChatRequest) -> Result<ChatResponse, LLMError> { unreachable!() }
+    /// #     async fn stream_chat(&self, _request: ChatRequest) -> Result<ChatStream, LLMError> { Ok(Box::pin(stream::empty())) }
+    /// #     fn capabilities(&self) -> CapabilityDescriptor { CapabilityDescriptor::default() }
+    /// #     fn name(&self) -> &'static str { "dummy" }
+    /// # }
+    /// let client = LLMClient::builder()
+    ///     .register_handle("primary", Arc::new(DummyProvider))
+    ///     .expect("unique handle")
+    ///     .build();
+    /// assert_eq!(client.handles(), vec!["primary".to_string()]);
+    /// ```
     pub fn build(self) -> LLMClient {
         LLMClient {
             providers: self.providers,
@@ -147,7 +580,7 @@ mod tests {
     use crate::types::{ChatRequest, ChatResponse};
     use std::sync::Arc;
 
-    /// 简单的测试 Provider 实现 只关注 capabilities
+    /// Simple test provider that only exposes capability metadata.
     struct DummyProvider {
         name: &'static str,
         caps: CapabilityDescriptor,
@@ -303,7 +736,7 @@ mod tests {
         assert_eq!(handles, vec!["stream-enabled".to_string()]);
     }
 
-    /// 重复句柄应当在注册阶段被显式拒绝
+    /// Ensures duplicate handles are rejected during registration.
     #[test]
     fn register_handle_rejects_duplicate_handle() {
         let provider1 = Arc::new(DummyProvider {
@@ -337,7 +770,7 @@ mod tests {
         }
     }
 
-    /// 通过 LLMClientLike trait 对 LLMClient 进行调用
+    /// Verifies that [`LLMClient`] implements [`LLMClientLike`].
     #[tokio::test]
     async fn llmclient_implements_llmclientlike_trait() {
         let provider = Arc::new(DummyProvider {
@@ -349,7 +782,7 @@ mod tests {
             providers: HashMap::from([("handle".to_string(), provider)]),
         };
 
-        // 通过 trait 对象调用 chat 确认编译与运行行为正常
+        // Invoke chat through the trait object to ensure compilation and behavior.
         let trait_obj: &dyn LLMClientLike = &client;
         let result = trait_obj
             .chat(
@@ -365,7 +798,7 @@ mod tests {
             )
             .await;
 
-        // DummyProvider 总是返回 NotImplemented
+        // DummyProvider always returns a NotImplemented error branch.
         let err = result.expect_err("chat should return error from dummy provider");
         match err {
             LLMError::NotImplemented { feature } => {
