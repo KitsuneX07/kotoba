@@ -130,6 +130,62 @@ impl AnthropicMessagesProvider {
         self
     }
 
+    /// Constructs a provider from a [`ModelConfig`].
+    ///
+    /// This method is used by the macro-driven provider registration system to build
+    /// providers from declarative configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The model configuration containing credentials and settings
+    /// * `transport` - The HTTP transport implementation to use
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LLMError::Auth`] when credentials are missing or invalid.
+    pub fn from_model_config(
+        config: &crate::config::ModelConfig,
+        transport: DynHttpTransport,
+    ) -> Result<Self, LLMError> {
+        use crate::config::Credential;
+
+        let api_key =
+            match &config.credential {
+                Credential::ApiKey { key, .. } => key.clone(),
+                Credential::Bearer { token } => token.clone(),
+                Credential::ServiceAccount { .. } => return Err(LLMError::Auth {
+                    message:
+                        "provider anthropic_messages does not support service account credential"
+                            .to_string(),
+                }),
+                Credential::None => {
+                    return Err(LLMError::Auth {
+                        message: "provider anthropic_messages requires credential".to_string(),
+                    });
+                }
+            };
+
+        let mut provider = Self::new(transport, api_key);
+
+        if let Some(base_url) = &config.base_url {
+            provider = provider.with_base_url(base_url.clone());
+        }
+
+        if let Some(model) = &config.default_model {
+            provider = provider.with_default_model(model.clone());
+        }
+
+        if let Some(Value::String(version)) = config.extra.get("version") {
+            provider = provider.with_version(version.clone());
+        }
+
+        if let Some(Value::String(beta)) = config.extra.get("beta") {
+            provider = provider.with_beta(beta.clone());
+        }
+
+        Ok(provider)
+    }
+
     pub(crate) fn endpoint(&self) -> String {
         let base = self.base_url.trim_end_matches('/');
         if base.ends_with("/v1") {

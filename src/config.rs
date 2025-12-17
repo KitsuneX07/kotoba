@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -7,11 +6,32 @@ use serde_json::Value;
 use crate::client::LLMClient;
 use crate::error::LLMError;
 use crate::http::DynHttpTransport;
-use crate::provider::DynProvider;
-use crate::provider::anthropic_messages::AnthropicMessagesProvider;
-use crate::provider::google_gemini::GoogleGeminiProvider;
-use crate::provider::openai_chat::OpenAiChatProvider;
-use crate::provider::openai_responses::OpenAiResponsesProvider;
+
+// Import the macro to register providers
+use crate::register_providers;
+
+// Register all providers using the macro
+register_providers!(
+    (openai_chat, "openai_chat", OpenAiChatProvider, OpenAiChat),
+    (
+        openai_responses,
+        "openai_responses",
+        OpenAiResponsesProvider,
+        OpenAiResponses
+    ),
+    (
+        anthropic_messages,
+        "anthropic_messages",
+        AnthropicMessagesProvider,
+        AnthropicMessages
+    ),
+    (
+        google_gemini,
+        "google_gemini",
+        GoogleGeminiProvider,
+        GoogleGemini
+    ),
+);
 
 /// Describes a provider handle that can be registered on an [`LLMClient`].
 ///
@@ -28,16 +48,6 @@ pub struct ModelConfig {
     /// Extra provider-specific settings such as `service_tier` or `safetySettings`.
     #[serde(default)]
     pub extra: HashMap<String, Value>,
-}
-
-/// Enumerates the provider kinds supported by the configuration loader.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProviderKind {
-    OpenAiChat,
-    OpenAiResponses,
-    AnthropicMessages,
-    GoogleGemini,
 }
 
 /// Credential variants understood by the configuration loader.
@@ -102,102 +112,6 @@ pub fn build_client_from_configs(
     }
 
     Ok(builder.build())
-}
-
-fn build_provider_from_config(
-    config: &ModelConfig,
-    transport: DynHttpTransport,
-) -> Result<DynProvider, LLMError> {
-    let provider: DynProvider = match config.provider {
-        ProviderKind::OpenAiChat => {
-            let api_key = extract_api_key(&config.credential, "openai_chat")?;
-            let mut provider = OpenAiChatProvider::new(transport, api_key);
-
-            if let Some(base_url) = &config.base_url {
-                provider = provider.with_base_url(base_url.clone());
-            }
-            if let Some(model) = &config.default_model {
-                provider = provider.with_default_model(model.clone());
-            }
-
-            if let Some(Value::String(org)) = config.extra.get("organization") {
-                provider = provider.with_organization(org.clone());
-            }
-            if let Some(Value::String(project)) = config.extra.get("project") {
-                provider = provider.with_project(project.clone());
-            }
-
-            Arc::new(provider)
-        }
-        ProviderKind::OpenAiResponses => {
-            let api_key = extract_api_key(&config.credential, "openai_responses")?;
-            let mut provider = OpenAiResponsesProvider::new(transport, api_key);
-
-            if let Some(base_url) = &config.base_url {
-                provider = provider.with_base_url(base_url.clone());
-            }
-            if let Some(model) = &config.default_model {
-                provider = provider.with_default_model(model.clone());
-            }
-
-            if let Some(Value::String(org)) = config.extra.get("organization") {
-                provider = provider.with_organization(org.clone());
-            }
-            if let Some(Value::String(project)) = config.extra.get("project") {
-                provider = provider.with_project(project.clone());
-            }
-
-            Arc::new(provider)
-        }
-        ProviderKind::AnthropicMessages => {
-            let api_key = extract_api_key(&config.credential, "anthropic_messages")?;
-            let mut provider = AnthropicMessagesProvider::new(transport, api_key);
-
-            if let Some(base_url) = &config.base_url {
-                provider = provider.with_base_url(base_url.clone());
-            }
-            if let Some(model) = &config.default_model {
-                provider = provider.with_default_model(model.clone());
-            }
-
-            if let Some(Value::String(version)) = config.extra.get("version") {
-                provider = provider.with_version(version.clone());
-            }
-            if let Some(Value::String(beta)) = config.extra.get("beta") {
-                provider = provider.with_beta(beta.clone());
-            }
-
-            Arc::new(provider)
-        }
-        ProviderKind::GoogleGemini => {
-            let api_key = extract_api_key(&config.credential, "google_gemini")?;
-            let mut provider = GoogleGeminiProvider::new(transport, api_key);
-
-            if let Some(base_url) = &config.base_url {
-                provider = provider.with_base_url(base_url.clone());
-            }
-            if let Some(model) = &config.default_model {
-                provider = provider.with_default_model(model.clone());
-            }
-
-            Arc::new(provider)
-        }
-    };
-
-    Ok(provider)
-}
-
-fn extract_api_key(credential: &Credential, provider: &'static str) -> Result<String, LLMError> {
-    match credential {
-        Credential::ApiKey { key, .. } => Ok(key.clone()),
-        Credential::Bearer { token } => Ok(token.clone()),
-        Credential::ServiceAccount { .. } => Err(LLMError::Auth {
-            message: format!("provider {provider} does not support service account credential"),
-        }),
-        Credential::None => Err(LLMError::Auth {
-            message: format!("provider {provider} requires credential"),
-        }),
-    }
 }
 
 #[cfg(test)]
