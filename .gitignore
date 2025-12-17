@@ -33,3 +33,4 @@ docs/book
 
 .env
 .DS_Store
+*.xml
