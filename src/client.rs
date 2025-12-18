@@ -522,7 +522,7 @@ impl LLMClientBuilder {
     ///
     /// # Errors
     ///
-    /// Returns [`LLMError::Validation`] if the provided handle already exists.
+    /// Returns [`LLMError::InvalidConfig`] if the provided handle already exists.
     pub fn register_handle<S: Into<String>>(
         mut self,
         handle: S,
@@ -530,8 +530,9 @@ impl LLMClientBuilder {
     ) -> Result<Self, LLMError> {
         let handle = handle.into();
         if self.providers.contains_key(&handle) {
-            return Err(LLMError::Validation {
-                message: format!("duplicate model handle: {handle}"),
+            return Err(LLMError::InvalidConfig {
+                field: "handle".to_string(),
+                reason: format!("duplicate model handle: {handle}"),
             });
         }
         self.providers.insert(handle, provider);
@@ -760,10 +761,11 @@ mod tests {
         };
 
         match err {
-            LLMError::Validation { message } => {
+            LLMError::InvalidConfig { field, reason } => {
+                assert_eq!(field, "handle");
                 assert!(
-                    message.contains("duplicate model handle: duplicate"),
-                    "unexpected validation message for duplicate handle: {message}"
+                    reason.contains("duplicate model handle: duplicate"),
+                    "unexpected invalid config reason: {reason}"
                 );
             }
             other => panic!("unexpected error type for duplicate handle: {other:?}"),

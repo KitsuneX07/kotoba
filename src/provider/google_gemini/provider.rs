@@ -10,7 +10,7 @@ use crate::http::{
     DynHttpTransport, HttpResponse, HttpStreamResponse, post_json_stream_with_headers,
     post_json_with_headers,
 };
-use crate::provider::{ChatStream, LLMProvider};
+use crate::provider::{ChatStream, LLMProvider, retry::retry_after_from_headers};
 use crate::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
 
 use super::error::parse_gemini_error;
@@ -175,12 +175,20 @@ impl GoogleGeminiProvider {
     }
 
     fn ensure_success(&self, response: HttpResponse) -> Result<String, LLMError> {
-        let status = response.status;
-        let text = response.into_string()?;
+        let HttpResponse {
+            status,
+            headers,
+            body,
+        } = response;
+        let text = String::from_utf8(body).map_err(|err| LLMError::transport(err.to_string()))?;
         if (200..300).contains(&status) {
             Ok(text)
         } else {
-            Err(parse_gemini_error(status, &text))
+            Err(parse_gemini_error(
+                status,
+                &text,
+                retry_after_from_headers(&headers),
+            ))
         }
     }
 
@@ -228,11 +236,20 @@ impl LLMProvider for GoogleGeminiProvider {
         let endpoint = self.stream_endpoint(&model);
         let body = self.build_request_body(&request, &model, true)?;
         let response = self.send_stream_request(endpoint.clone(), body).await?;
-        if !(200..300).contains(&response.status) {
-            let text = collect_stream_text(response.body, self.name()).await?;
-            return Err(parse_gemini_error(response.status, &text));
+        let HttpStreamResponse {
+            status,
+            headers,
+            body,
+        } = response;
+        if !(200..300).contains(&status) {
+            let text = collect_stream_text(body, self.name()).await?;
+            return Err(parse_gemini_error(
+                status,
+                &text,
+                retry_after_from_headers(&headers),
+            ));
         }
-        Ok(create_stream(response.body, self.name(), endpoint))
+        Ok(create_stream(body, self.name(), endpoint))
     }
 
     fn capabilities(&self) -> CapabilityDescriptor {

@@ -6,7 +6,7 @@
 
 | 字段 | 说明 |
 | --- | --- |
-| `handle` | 注册到 `LLMClient` 的唯一名称，后续 `client.chat(handle, ..)` 通过它路由。重复 handle 会立即触发 `LLMError::Validation`。 |
+| `handle` | 注册到 `LLMClient` 的唯一名称，后续 `client.chat(handle, ..)` 通过它路由。重复 handle 会立即触发 `LLMError::InvalidConfig`。 |
 | `provider` | `ProviderKind` 枚举，当前支持 `OpenAiChat`、`OpenAiResponses`、`AnthropicMessages`、`GoogleGemini`。 |
 | `credential` | `Credential::ApiKey { header, key }`、`Credential::Bearer { token }`、`Credential::ServiceAccount { json }`、`Credential::None`。除 `ServiceAccount`/`None` 外都会映射到对应 Provider；不满足条件时返回 `LLMError::Auth`。 |
 | `default_model` | 当 `ChatRequest.options.model` 为空时的兜底模型。绝大多数 Provider 都在请求阶段要求模型，缺失会报 `LLMError::Validation`。 |
@@ -59,7 +59,7 @@ fn load_client() -> Result<kotoba_llm::LLMClient, kotoba_llm::LLMError> {
 | --- | --- | --- |
 | 忘记在配置里设置 `default_model` | Provider 构造成功，但在运行时调用 `chat` 会因缺少模型返回 `LLMError::Validation` | 在配置层约束必须指定 `default_model`，或在业务层始终给 `ChatRequest.options.model` 赋值。 |
 | `extra` 键误拼写 | 不会报错，但相应 header/字段不会生效 | 在配置 schema 或集成测试中校验常见键是否存在。 |
-| 同一个 handle 重复出现在配置里 | `build_client_from_configs` 会直接报 `LLMError::Validation { message: "duplicate model handle: ..." }` | 在生成配置时先做去重，或按照 Provider 目的命名（如 `openai-fallback`）。 |
+| 同一个 handle 重复出现在配置里 | `build_client_from_configs` 会直接报 `LLMError::InvalidConfig { field: "handle", reason: "duplicate model handle: ..." }` | 在生成配置时先做去重，或按照 Provider 目的命名（如 `openai-fallback`）。 |
 | 使用 `Credential::ServiceAccount` 配置 Gemini | 当前实现直接拒绝，提示"provider google_gemini does not support service account credential" | 改用 API Key 或在外部服务中交换为 Bearer token 后再注入。 |
 
 ## 请求补丁 (Request Patch)

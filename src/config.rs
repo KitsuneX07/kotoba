@@ -206,7 +206,7 @@ fn remove_json_field_inner(value: &mut Value, segments: &[&str]) {
 ///
 /// # Errors
 ///
-/// Returns [`LLMError::Auth`] when credentials are invalid or missing, [`LLMError::Validation`]
+/// Returns [`LLMError::Auth`] when credentials are invalid or missing, [`LLMError::InvalidConfig`]
 /// when duplicate handles are present, or any provider-specific error raised while
 /// constructing provider instances.
 pub fn build_client_from_configs(
@@ -467,10 +467,11 @@ mod tests {
         };
 
         match err {
-            LLMError::Validation { message } => {
+            LLMError::InvalidConfig { field, reason } => {
+                assert_eq!(field, "handle");
                 assert!(
-                    message.contains("duplicate model handle: dup-handle"),
-                    "unexpected validation message for duplicate handle in configs: {message}"
+                    reason.contains("duplicate model handle: dup-handle"),
+                    "unexpected invalid-config reason for duplicate handle: {reason}"
                 );
             }
             other => panic!("unexpected error type for duplicate handle in configs: {other:?}"),

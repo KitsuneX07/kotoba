@@ -29,7 +29,7 @@
   支持从配置文件批量构建客户端。自动处理 API Key 映射（Bearer/x-api-key）、Base URL 覆写及厂商特有参数注入。
 
 - **完备的错误处理 (Robust Error Handling)**
-  细粒度的 `LLMError` 枚举，精确区分网络传输、鉴权失败、速率限制 (Rate Limit) 与模型能力缺失等场景。
+  细粒度的 `LLMError` 枚举：除 `Transport`、`Auth`、`Validation` 外，还涵盖 `TokenLimitExceeded`、`ModelNotFound`、`InvalidConfig`、`StreamClosed` 等场景，保留供应商原始消息便于精准重试与定位。
 
 ## 安装
 

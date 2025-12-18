@@ -150,7 +150,15 @@ impl Stream for StreamDecoder {
                             return Poll::Ready(Some(event));
                         }
                     }
-                    Err(err) => return Poll::Ready(Some(Err(err))),
+                    Err(err) => {
+                        let mapped = match err {
+                            LLMError::Transport { message } => LLMError::StreamClosed {
+                                message: format!("stream error from {}: {message}", this.provider),
+                            },
+                            other => other,
+                        };
+                        return Poll::Ready(Some(Err(mapped)));
+                    }
                 },
                 Poll::Ready(None) => {
                     this.stream_closed = true;
@@ -210,6 +218,20 @@ mod tests {
         match err {
             LLMError::Provider { provider, .. } => assert_eq!(provider, "test_provider"),
             other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn decoder_rewrites_transport_errors_to_stream_closed() {
+        let chunks = vec![Err(LLMError::transport("connection reset".to_string()))];
+        let mut decoder = StreamDecoder::new(build_body(chunks), "test_provider");
+        let err = decoder.next().await.expect("event").unwrap_err();
+        match err {
+            LLMError::StreamClosed { message } => {
+                assert!(message.contains("connection reset"));
+                assert!(message.contains("test_provider"));
+            }
+            other => panic!("expected StreamClosed, got {other:?}"),
         }
     }
 }
