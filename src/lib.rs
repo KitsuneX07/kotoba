@@ -9,6 +9,7 @@ pub mod config;
 pub mod error;
 pub mod http;
 pub mod provider;
+pub mod stream;
 pub mod types;
 
 pub use client::{LLMClient, LLMClientLike};
