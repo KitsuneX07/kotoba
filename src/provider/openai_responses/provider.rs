@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use crate::config::RequestPatch;
 use crate::error::LLMError;
 use crate::http::{
     DynHttpTransport, HttpResponse, HttpStreamResponse, post_json_stream_with_headers,
@@ -31,6 +32,7 @@ pub struct OpenAiResponsesProvider {
     pub(crate) organization: Option<String>,
     pub(crate) project: Option<String>,
     pub(crate) default_model: Option<String>,
+    pub(crate) request_patch: Option<RequestPatch>,
 }
 
 impl OpenAiResponsesProvider {
@@ -54,6 +56,7 @@ impl OpenAiResponsesProvider {
             organization: None,
             project: None,
             default_model: None,
+            request_patch: None,
         }
     }
 
@@ -181,6 +184,8 @@ impl OpenAiResponsesProvider {
             provider = provider.with_project(project.clone());
         }
 
+        provider.request_patch = config.patch.clone();
+
         Ok(provider)
     }
 
@@ -227,23 +232,19 @@ impl OpenAiResponsesProvider {
     }
 
     async fn send_request(&self, body: Value) -> Result<HttpResponse, LLMError> {
-        post_json_with_headers(
-            self.transport.as_ref(),
-            self.endpoint(),
-            self.build_headers(),
-            &body,
-        )
-        .await
+        let mut url = self.endpoint();
+        let mut headers = self.build_headers();
+        let mut body = body;
+        self.apply_patch(&mut url, &mut headers, &mut body);
+        post_json_with_headers(self.transport.as_ref(), url, headers, &body).await
     }
 
     async fn send_stream_request(&self, body: Value) -> Result<HttpStreamResponse, LLMError> {
-        post_json_stream_with_headers(
-            self.transport.as_ref(),
-            self.endpoint(),
-            self.build_headers(),
-            &body,
-        )
-        .await
+        let mut url = self.endpoint();
+        let mut headers = self.build_headers();
+        let mut body = body;
+        self.apply_patch(&mut url, &mut headers, &mut body);
+        post_json_stream_with_headers(self.transport.as_ref(), url, headers, &body).await
     }
 
     fn ensure_success(&self, response: HttpResponse) -> Result<String, LLMError> {
@@ -261,6 +262,17 @@ impl OpenAiResponsesProvider {
             provider: self.name(),
             message: format!("failed to parse OpenAI Responses response: {err}"),
         })
+    }
+
+    fn apply_patch(
+        &self,
+        url: &mut String,
+        headers: &mut HashMap<String, String>,
+        body: &mut Value,
+    ) {
+        if let Some(patch) = &self.request_patch {
+            patch.apply(url, headers, body);
+        }
     }
 }
 

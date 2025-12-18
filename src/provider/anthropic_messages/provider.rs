@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use crate::config::RequestPatch;
 use crate::error::LLMError;
 use crate::http::{
     DynHttpTransport, HttpResponse, HttpStreamResponse, post_json_stream_with_headers,
@@ -32,6 +33,7 @@ pub struct AnthropicMessagesProvider {
     pub(crate) version: String,
     pub(crate) beta: Option<String>,
     pub(crate) default_model: Option<String>,
+    pub(crate) request_patch: Option<RequestPatch>,
 }
 
 impl AnthropicMessagesProvider {
@@ -55,6 +57,7 @@ impl AnthropicMessagesProvider {
             version: DEFAULT_VERSION.to_string(),
             beta: None,
             default_model: None,
+            request_patch: None,
         }
     }
 
@@ -183,6 +186,8 @@ impl AnthropicMessagesProvider {
             provider = provider.with_beta(beta.clone());
         }
 
+        provider.request_patch = config.patch.clone();
+
         Ok(provider)
     }
 
@@ -224,23 +229,19 @@ impl AnthropicMessagesProvider {
     }
 
     async fn send_request(&self, body: Value) -> Result<HttpResponse, LLMError> {
-        post_json_with_headers(
-            self.transport.as_ref(),
-            self.endpoint(),
-            self.build_headers(),
-            &body,
-        )
-        .await
+        let mut url = self.endpoint();
+        let mut headers = self.build_headers();
+        let mut body = body;
+        self.apply_patch(&mut url, &mut headers, &mut body);
+        post_json_with_headers(self.transport.as_ref(), url, headers, &body).await
     }
 
     async fn send_stream_request(&self, body: Value) -> Result<HttpStreamResponse, LLMError> {
-        post_json_stream_with_headers(
-            self.transport.as_ref(),
-            self.endpoint(),
-            self.build_headers(),
-            &body,
-        )
-        .await
+        let mut url = self.endpoint();
+        let mut headers = self.build_headers();
+        let mut body = body;
+        self.apply_patch(&mut url, &mut headers, &mut body);
+        post_json_stream_with_headers(self.transport.as_ref(), url, headers, &body).await
     }
 
     fn ensure_success(&self, response: HttpResponse) -> Result<String, LLMError> {
@@ -258,6 +259,17 @@ impl AnthropicMessagesProvider {
             provider: self.name(),
             message: format!("failed to parse Anthropic response: {err}"),
         })
+    }
+
+    fn apply_patch(
+        &self,
+        url: &mut String,
+        headers: &mut HashMap<String, String>,
+        body: &mut Value,
+    ) {
+        if let Some(patch) = &self.request_patch {
+            patch.apply(url, headers, body);
+        }
     }
 }
 

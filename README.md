@@ -110,6 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         default_model: Some("gemini-2.0-flash".into()),
         base_url: None,
         extra: Default::default(),
+        patch: None,
     }];
 
     // 一次性构建包含所有 Provider 的客户端

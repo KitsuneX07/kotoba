@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use crate::config::RequestPatch;
 use crate::error::LLMError;
 use crate::http::{
     DynHttpTransport, HttpResponse, HttpStreamResponse, post_json_stream_with_headers,
@@ -26,6 +27,7 @@ pub struct GoogleGeminiProvider {
     pub(crate) base_url: String,
     pub(crate) api_key: String,
     pub(crate) default_model: Option<String>,
+    pub(crate) request_patch: Option<RequestPatch>,
 }
 
 impl GoogleGeminiProvider {
@@ -36,6 +38,7 @@ impl GoogleGeminiProvider {
             base_url: DEFAULT_BASE_URL.to_string(),
             api_key: api_key.into(),
             default_model: None,
+            request_patch: None,
         }
     }
 
@@ -96,6 +99,8 @@ impl GoogleGeminiProvider {
             provider = provider.with_default_model(model.clone());
         }
 
+        provider.request_patch = config.patch.clone();
+
         Ok(provider)
     }
 
@@ -150,7 +155,11 @@ impl GoogleGeminiProvider {
     }
 
     async fn send_request(&self, url: String, body: Value) -> Result<HttpResponse, LLMError> {
-        post_json_with_headers(self.transport.as_ref(), url, self.build_headers(), &body).await
+        let mut url = url;
+        let mut headers = self.build_headers();
+        let mut body = body;
+        self.apply_patch(&mut url, &mut headers, &mut body);
+        post_json_with_headers(self.transport.as_ref(), url, headers, &body).await
     }
 
     async fn send_stream_request(
@@ -158,8 +167,11 @@ impl GoogleGeminiProvider {
         url: String,
         body: Value,
     ) -> Result<HttpStreamResponse, LLMError> {
-        post_json_stream_with_headers(self.transport.as_ref(), url, self.build_headers(), &body)
-            .await
+        let mut url = url;
+        let mut headers = self.build_headers();
+        let mut body = body;
+        self.apply_patch(&mut url, &mut headers, &mut body);
+        post_json_stream_with_headers(self.transport.as_ref(), url, headers, &body).await
     }
 
     fn ensure_success(&self, response: HttpResponse) -> Result<String, LLMError> {
@@ -177,6 +189,17 @@ impl GoogleGeminiProvider {
             provider: self.name(),
             message: format!("failed to parse Gemini response: {err}"),
         })
+    }
+
+    fn apply_patch(
+        &self,
+        url: &mut String,
+        headers: &mut HashMap<String, String>,
+        body: &mut Value,
+    ) {
+        if let Some(patch) = &self.request_patch {
+            patch.apply(url, headers, body);
+        }
     }
 }
 

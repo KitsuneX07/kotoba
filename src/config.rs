@@ -48,6 +48,8 @@ pub struct ModelConfig {
     /// Extra provider-specific settings such as `service_tier` or `safetySettings`.
     #[serde(default)]
     pub extra: HashMap<String, Value>,
+    /// 运行时请求修改
+    pub patch: Option<RequestPatch>,
 }
 
 /// Credential variants understood by the configuration loader.
@@ -67,6 +69,112 @@ pub enum Credential {
     ServiceAccount { json: Value },
     /// Dummy variant for providers that do not require credentials.
     None,
+}
+
+/// 声明式请求补丁，可在运行时重写 URL、Headers 或 Body。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestPatch {
+    /// 覆盖请求 URL
+    pub url: Option<String>,
+    /// 深度合并到请求 body
+    pub body: Option<Value>,
+    /// None 表示删除 header，Some 则写入/覆盖
+    pub headers: Option<HashMap<String, Option<String>>>,
+    /// 按点分路径删除 body 中的字段（支持数组下标）
+    pub remove_fields: Option<Vec<String>>,
+}
+
+impl RequestPatch {
+    /// Applies the patch to the given request parts.
+    pub fn apply(&self, url: &mut String, headers: &mut HashMap<String, String>, body: &mut Value) {
+        if let Some(new_url) = &self.url {
+            *url = new_url.clone();
+        }
+
+        if let Some(patch_body) = &self.body {
+            merge_json(body, patch_body);
+        }
+
+        if let Some(header_patch) = &self.headers {
+            for (key, value) in header_patch {
+                match value {
+                    Some(v) => {
+                        headers.insert(key.clone(), v.clone());
+                    }
+                    None => {
+                        headers.remove(key);
+                    }
+                }
+            }
+        }
+
+        if let Some(paths) = &self.remove_fields {
+            for path in paths {
+                remove_json_field(body, path);
+            }
+        }
+    }
+}
+
+fn merge_json(target: &mut Value, patch: &Value) {
+    match patch {
+        Value::Object(patch_map) => {
+            if let Value::Object(target_map) = target {
+                for (key, patch_value) in patch_map {
+                    match target_map.get_mut(key) {
+                        Some(existing) => merge_json(existing, patch_value),
+                        None => {
+                            target_map.insert(key.clone(), patch_value.clone());
+                        }
+                    }
+                }
+            } else {
+                *target = patch.clone();
+            }
+        }
+        _ => {
+            *target = patch.clone();
+        }
+    }
+}
+
+fn remove_json_field(value: &mut Value, path: &str) {
+    let segments: Vec<&str> = path
+        .split('.')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    if segments.is_empty() {
+        return;
+    }
+    remove_json_field_inner(value, &segments);
+}
+
+fn remove_json_field_inner(value: &mut Value, segments: &[&str]) {
+    if segments.is_empty() {
+        return;
+    }
+
+    match value {
+        Value::Object(map) => {
+            if segments.len() == 1 {
+                map.remove(segments[0]);
+            } else if let Some(next) = map.get_mut(segments[0]) {
+                remove_json_field_inner(next, &segments[1..]);
+            }
+        }
+        Value::Array(array) => {
+            if let Ok(index) = segments[0].parse::<usize>() {
+                if index < array.len() {
+                    if segments.len() == 1 {
+                        array.remove(index);
+                    } else {
+                        remove_json_field_inner(&mut array[index], &segments[1..]);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Builds an [`LLMClient`] from the provided model configurations.
@@ -89,6 +197,7 @@ pub enum Credential {
 ///     default_model: Some("gpt-4.1-mini".into()),
 ///     base_url: None,
 ///     extra: HashMap::new(),
+///     patch: None,
 /// }];
 /// let transport = default_dyn_transport().expect("transport");
 /// let client = build_client_from_configs(&configs, transport).expect("client");
@@ -118,6 +227,7 @@ pub fn build_client_from_configs(
 mod tests {
     use super::*;
     use crate::http::reqwest::default_dyn_transport;
+    use serde_json::json;
 
     /// Ensures every [`ProviderKind`] variant can be registered on [`LLMClient`].
     #[test]
@@ -135,6 +245,7 @@ mod tests {
                 default_model: Some("gpt-4.1-mini".to_string()),
                 base_url: None,
                 extra: HashMap::new(),
+                patch: None,
             },
             ModelConfig {
                 handle: "openai-responses".to_string(),
@@ -146,6 +257,7 @@ mod tests {
                 default_model: Some("gpt-4.1-mini".to_string()),
                 base_url: None,
                 extra: HashMap::new(),
+                patch: None,
             },
             ModelConfig {
                 handle: "anthropic-messages".to_string(),
@@ -157,6 +269,7 @@ mod tests {
                 default_model: Some("claude-3-5-sonnet".to_string()),
                 base_url: None,
                 extra: HashMap::new(),
+                patch: None,
             },
             ModelConfig {
                 handle: "gemini-generate".to_string(),
@@ -168,6 +281,7 @@ mod tests {
                 default_model: Some("gemini-2.0-flash".to_string()),
                 base_url: None,
                 extra: HashMap::new(),
+                patch: None,
             },
         ];
 
@@ -201,6 +315,7 @@ mod tests {
                 default_model: Some("gpt-4.1-mini".to_string()),
                 base_url: None,
                 extra: HashMap::new(),
+                patch: None,
             },
             ModelConfig {
                 handle: "gemini-default".to_string(),
@@ -212,6 +327,7 @@ mod tests {
                 default_model: Some("gemini-2.0-flash".to_string()),
                 base_url: None,
                 extra: HashMap::new(),
+                patch: None,
             },
         ];
 
@@ -236,6 +352,7 @@ mod tests {
             default_model: None,
             base_url: None,
             extra: HashMap::new(),
+            patch: None,
         }];
 
         let result = build_client_from_configs(&configs, transport);
@@ -268,6 +385,7 @@ mod tests {
             default_model: Some("gemini-2.0-flash".to_string()),
             base_url: None,
             extra: HashMap::new(),
+            patch: None,
         }];
 
         let result = build_client_from_configs(&configs, transport);
@@ -301,6 +419,7 @@ mod tests {
             default_model: Some("gpt-4.1-mini".to_string()),
             base_url: None,
             extra: HashMap::new(),
+            patch: None,
         }];
 
         let result = build_client_from_configs(&configs, transport);
@@ -324,6 +443,7 @@ mod tests {
             default_model: Some("gpt-4.1-mini".to_string()),
             base_url: None,
             extra: HashMap::new(),
+            patch: None,
         };
 
         let cfg2 = ModelConfig {
@@ -336,6 +456,7 @@ mod tests {
             default_model: Some("gemini-2.0-flash".to_string()),
             base_url: None,
             extra: HashMap::new(),
+            patch: None,
         };
 
         let configs = vec![cfg1, cfg2];
@@ -354,5 +475,67 @@ mod tests {
             }
             other => panic!("unexpected error type for duplicate handle in configs: {other:?}"),
         }
+    }
+
+    #[test]
+    fn request_patch_merges_and_removes_fields() {
+        let patch = RequestPatch {
+            url: Some("https://override.local/chat".to_string()),
+            body: Some(json!({
+                "metadata": { "trace": false },
+                "extra": { "temperature": 0.2 }
+            })),
+            headers: Some(HashMap::from([
+                ("X-Debug".to_string(), None),
+                ("X-Injected".to_string(), Some("1".to_string())),
+            ])),
+            remove_fields: Some(vec![
+                "metadata.remove_me".to_string(),
+                "messages.0.drop".to_string(),
+            ]),
+        };
+
+        let mut url = "https://api.example.com/v1/chat".to_string();
+        let mut headers = HashMap::from([
+            ("Authorization".to_string(), "Bearer test".to_string()),
+            ("X-Debug".to_string(), "true".to_string()),
+        ]);
+        let mut body = json!({
+            "metadata": { "trace": true, "remove_me": "temp" },
+            "messages": [{ "role": "user", "drop": "yes" }],
+        });
+
+        patch.apply(&mut url, &mut headers, &mut body);
+
+        assert_eq!(url, "https://override.local/chat");
+        assert!(!headers.contains_key("X-Debug"));
+        assert_eq!(headers.get("X-Injected"), Some(&"1".to_string()));
+        assert_eq!(
+            headers.get("Authorization"),
+            Some(&"Bearer test".to_string())
+        );
+        assert_eq!(body["metadata"]["trace"], json!(false));
+        assert!(body["metadata"].get("remove_me").is_none());
+        assert!(body["messages"][0].get("drop").is_none());
+        assert_eq!(body["extra"]["temperature"], json!(0.2));
+    }
+
+    #[test]
+    fn request_patch_replaces_scalar_body() {
+        let patch = RequestPatch {
+            url: None,
+            body: Some(json!({ "structured": true })),
+            headers: None,
+            remove_fields: None,
+        };
+
+        let mut url = "https://example.com".to_string();
+        let mut headers = HashMap::new();
+        let mut body = json!("raw text body");
+
+        patch.apply(&mut url, &mut headers, &mut body);
+        assert_eq!(body, json!({ "structured": true }));
+        assert!(headers.is_empty());
+        assert_eq!(url, "https://example.com");
     }
 }
