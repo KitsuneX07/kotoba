@@ -491,3 +491,221 @@ pub struct CapabilityDescriptor {
     /// Whether parallel tool calls are supported.
     pub supports_parallel_tool_calls: bool,
 }
+
+/// Groups provider families that share similar tokenization characteristics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderType {
+    /// OpenAI Chat/Responses style tokenizer with ~4 ASCII chars per token.
+    OpenAI,
+    /// Anthropic Claude models follow OpenAI-like heuristics for mixed locales.
+    Anthropic,
+    /// Google Gemini tokenizes English slightly more aggressively (~4.5 chars/token).
+    GoogleGemini,
+}
+
+/// Token Estimator
+#[derive(Debug, Clone)]
+pub struct TokenEstimator {
+    provider_type: ProviderType,
+}
+
+impl TokenEstimator {
+    /// Creates an estimator tuned to a specific provider family.
+    pub fn new(provider_type: ProviderType) -> Self {
+        Self { provider_type }
+    }
+
+    /// Returns the configured provider type.
+    pub fn provider_type(&self) -> ProviderType {
+        self.provider_type
+    }
+
+    /// Estimates the number of tokens for a piece of text using provider heuristics.
+    pub fn estimate_text(&self, text: &str) -> usize {
+        let mut total_chars = 0usize;
+        let mut ascii_chars = 0usize;
+
+        for ch in text.chars() {
+            total_chars += 1;
+            if ch.is_ascii() {
+                ascii_chars += 1;
+            }
+        }
+
+        if total_chars == 0 {
+            return 0;
+        }
+
+        let ascii_ratio = ascii_chars as f64 / total_chars as f64;
+        let chars_per_token = match self.provider_type {
+            ProviderType::OpenAI | ProviderType::Anthropic => 2.0 + 2.0 * ascii_ratio,
+            ProviderType::GoogleGemini => 4.5,
+        };
+
+        ((total_chars as f64) / chars_per_token).ceil() as usize
+    }
+
+    /// Estimates the tokens for an entire chat request.
+    pub fn estimate_request(&self, request: &ChatRequest) -> TokenEstimate {
+        const OVERHEAD_PER_MESSAGE: usize = 4;
+
+        let mut total = 0usize;
+        let mut by_role: HashMap<String, usize> = HashMap::new();
+
+        for message in &request.messages {
+            let mut message_tokens = OVERHEAD_PER_MESSAGE;
+
+            for part in &message.content {
+                message_tokens += self.estimate_content_part(part, &message.role);
+            }
+
+            *by_role.entry(message.role.0.clone()).or_insert(0) += message_tokens;
+            total += message_tokens;
+        }
+
+        if !request.tools.is_empty() {
+            total += request.tools.len() * 50;
+        }
+
+        if let Some(format) = &request.response_format {
+            total += self.estimate_response_format(format);
+        }
+
+        TokenEstimate {
+            total,
+            by_role,
+            overhead: OVERHEAD_PER_MESSAGE * request.messages.len(),
+        }
+    }
+
+    fn estimate_content_part(&self, part: &ContentPart, role: &Role) -> usize {
+        match part {
+            ContentPart::Text(text) => self.estimate_text(&text.text),
+            ContentPart::Image(image) => self.estimate_image_tokens(image),
+            ContentPart::Audio(audio) => self.estimate_audio_tokens(audio, role),
+            ContentPart::Video(video) => self.estimate_media_tokens(video.metadata.as_ref()),
+            ContentPart::File(file) => self.estimate_text(&file.file_id),
+            ContentPart::ToolCall(call) => {
+                self.estimate_text(&serde_json::to_string(call).unwrap_or_default())
+            }
+            ContentPart::ToolResult(result) => {
+                self.estimate_text(&serde_json::to_string(result).unwrap_or_default())
+            }
+            ContentPart::Data { data } => self.estimate_text(&data.to_string()),
+        }
+    }
+
+    fn estimate_image_tokens(&self, image: &ImageContent) -> usize {
+        let base = match self.provider_type {
+            ProviderType::GoogleGemini => 600,
+            _ => 760,
+        };
+
+        let detail_multiplier = match image.detail {
+            Some(ImageDetail::High) => 2,
+            Some(ImageDetail::Low) => 1,
+            _ => 1,
+        };
+
+        base * detail_multiplier
+    }
+
+    fn estimate_audio_tokens(&self, audio: &AudioContent, role: &Role) -> usize {
+        let duration_ms = audio
+            .metadata
+            .as_ref()
+            .and_then(|meta| meta.get("duration_ms").and_then(|v| v.as_f64()))
+            .or_else(|| {
+                audio.metadata.as_ref().and_then(|meta| {
+                    meta.get("duration_seconds")
+                        .and_then(|v| v.as_f64().map(|seconds| seconds * 1000.0))
+                })
+            });
+
+        let duration_ms = match duration_ms {
+            Some(value) if value > 0.0 => value,
+            _ => return 0,
+        };
+
+        let per_token_ms = if role.0 == "assistant" { 50.0 } else { 100.0 };
+        (duration_ms / per_token_ms).ceil() as usize
+    }
+
+    fn estimate_media_tokens(&self, metadata: Option<&HashMap<String, Value>>) -> usize {
+        metadata
+            .and_then(|meta| meta.get("duration_ms").and_then(|v| v.as_f64()))
+            .map(|duration| (duration / 40.0).ceil() as usize)
+            .unwrap_or(200)
+    }
+
+    fn estimate_response_format(&self, format: &ResponseFormat) -> usize {
+        match format {
+            ResponseFormat::JsonObject => 20,
+            ResponseFormat::JsonSchema { schema } => self.estimate_text(&schema.to_string()),
+            ResponseFormat::Custom(value) => self.estimate_text(&value.to_string()),
+            ResponseFormat::Text => 0,
+        }
+    }
+}
+
+/// Token Estimate breakdown for a chat request.
+#[derive(Debug, Clone)]
+pub struct TokenEstimate {
+    /// Estimated total tokens in the request payload.
+    pub total: usize,
+    /// Breakdown aggregated by chat role (system/user/assistant/etc.).
+    pub by_role: HashMap<String, usize>,
+    /// Per-message framing overhead used in the calculation.
+    pub overhead: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_estimator_accounts_for_locale_mix() {
+        let estimator = TokenEstimator::new(ProviderType::OpenAI);
+        let ascii_tokens = estimator.estimate_text("Hello world!");
+        let mixed_tokens = estimator.estimate_text("Hello，世界！");
+
+        assert!(mixed_tokens >= ascii_tokens);
+        assert!(ascii_tokens > 0);
+    }
+
+    #[test]
+    fn request_estimator_breaks_down_roles() {
+        let estimator = TokenEstimator::new(ProviderType::Anthropic);
+        let request = ChatRequest {
+            messages: vec![
+                Message {
+                    role: Role::system(),
+                    name: None,
+                    content: vec![ContentPart::Text(TextContent {
+                        text: "You are a helpful assistant.".to_string(),
+                    })],
+                    metadata: None,
+                },
+                Message {
+                    role: Role::user(),
+                    name: None,
+                    content: vec![ContentPart::Text(TextContent {
+                        text: "Explain Rust ownership in 2 sentences.".to_string(),
+                    })],
+                    metadata: None,
+                },
+            ],
+            options: ChatOptions::default(),
+            tools: vec![],
+            tool_choice: None,
+            response_format: None,
+            metadata: None,
+        };
+
+        let estimate = estimator.estimate_request(&request);
+        assert!(estimate.total >= estimate.overhead);
+        assert_eq!(estimate.by_role.len(), 2);
+        assert!(estimate.by_role.contains_key("system"));
+        assert!(estimate.by_role.contains_key("user"));
+    }
+}
