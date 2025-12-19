@@ -116,10 +116,11 @@ fn next_backoff(current_backoff_ms: u64, config: RetryConfig) -> u64 {
     }
     let multiplier = config.backoff_multiplier.max(1.0);
     let scaled = (current_backoff_ms as f64) * multiplier;
-    let clamped = scaled
-        .is_finite()
-        .then_some(scaled)
-        .unwrap_or(f64::from(u32::MAX));
+    let clamped = if scaled.is_finite() {
+        scaled
+    } else {
+        f64::from(u32::MAX)
+    };
     clamped
         .round()
         .clamp(0.0, config.max_backoff_ms as f64)

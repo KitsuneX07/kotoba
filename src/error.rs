@@ -169,8 +169,7 @@ pub(crate) fn extract_model_identifier(message: &str) -> Option<String> {
 }
 
 fn between_delimiters(message: &str, delimiter: char) -> Option<String> {
-    let mut chars = message.char_indices();
-    while let Some((start, ch)) = chars.next() {
+    for (start, ch) in message.char_indices() {
         if ch == delimiter {
             let start_idx = start + ch.len_utf8();
             if start_idx >= message.len() {
