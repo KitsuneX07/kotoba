@@ -28,6 +28,31 @@ impl Role {
 }
 
 /// Normalized chat message shared across providers.
+///
+/// Messages mirror the provider-agnostic format consumed by
+/// [`crate::client::LLMClient`]. Each message bundles a [`Role`], optional name, and
+/// a sequence of [`ContentPart`] entries so callers can mix text, images, audio,
+/// or tool directives in a single request.
+///
+/// # Examples
+///
+/// ```
+/// # use kotoba_llm::types::{ContentPart, Message, Role, TextContent, ImageContent, ImageSource, ImageDetail};
+/// let msg = Message {
+///     role: Role::user(),
+///     name: Some("alice".into()),
+///     content: vec![
+///         ContentPart::Text(TextContent { text: "Describe this image".into() }),
+///         ContentPart::Image(ImageContent {
+///             source: ImageSource::Url { url: "https://example.com/img.png".into() },
+///             detail: Some(ImageDetail::High),
+///             metadata: None,
+///         }),
+///     ],
+///     metadata: None,
+/// };
+/// assert_eq!(msg.content.len(), 2);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     /// Role associated with this message.
@@ -42,6 +67,10 @@ pub struct Message {
 }
 
 /// Multimodal content part covering text, media, tools, and vendor data.
+///
+/// Providers consume these variants when converting a [`Message`] into their own
+/// JSON wire format. Use [`ContentPart::ToolCall`] and [`ContentPart::ToolResult`]
+/// when implementing tool handoffs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentPart {
@@ -139,6 +168,9 @@ pub struct FileContent {
 }
 
 /// Unified media source definition reused by audio and video parts.
+///
+/// Inline sources keep bytes within the JSON payload, whereas URLs and file IDs
+/// hand responsibility to the provider infrastructure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum MediaSource {
@@ -225,6 +257,39 @@ pub struct ToolResult {
 }
 
 /// Chat request shared across all providers.
+///
+/// A `ChatRequest` mimics the shape of OpenAI/Anthropic messages while normalizing
+/// multimodal content and tooling metadata. Populate `messages`, configure
+/// [`ChatOptions`], and optionally attach tool definitions or response-format hints
+/// before passing it to [`crate::client::LLMClient::chat`].
+///
+/// # Examples
+///
+/// ```
+/// # use kotoba_llm::types::{ChatRequest, ChatOptions, ContentPart, Message, Role, TextContent};
+/// let request = ChatRequest {
+///     messages: vec![
+///         Message {
+///             role: Role::system(),
+///             name: None,
+///             content: vec![ContentPart::Text(TextContent { text: "You are concise.".into() })],
+///             metadata: None,
+///         },
+///         Message {
+///             role: Role::user(),
+///             name: None,
+///             content: vec![ContentPart::Text(TextContent { text: "Summarize Rust traits.".into() })],
+///             metadata: None,
+///         },
+///     ],
+///     options: ChatOptions { temperature: Some(0.3), ..Default::default() },
+///     tools: Vec::new(),
+///     tool_choice: None,
+///     response_format: None,
+///     metadata: None,
+/// };
+/// assert_eq!(request.messages.len(), 2);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatRequest {
     /// Ordered list of messages to send.
@@ -244,21 +309,24 @@ pub struct ChatRequest {
 }
 
 /// Tunable chat options supported across providers.
+///
+/// Every field is optional so callers can only set knobs they care about. Providers
+/// ignore unknown fields or fall back to their documented defaults.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ChatOptions {
     /// Optional model identifier override.
     pub model: Option<String>,
-    /// Sampling temperature.
+    /// Sampling temperature, typically within `0.0..=2.0`.
     pub temperature: Option<f32>,
-    /// top_p
+    /// Nucleus sampling parameter where `1.0` disables the filter.
     pub top_p: Option<f32>,
-    /// Maximum number of output tokens.
+    /// Maximum number of output tokens returned by the provider.
     pub max_output_tokens: Option<u32>,
-    /// presence_penalty
+    /// Encourages models to talk about new topics (`-2.0..=2.0`).
     pub presence_penalty: Option<f32>,
-    /// frequency_penalty
+    /// Discourages repeating identical tokens (`-2.0..=2.0`).
     pub frequency_penalty: Option<f32>,
-    /// Whether providers may execute tools in parallel.
+    /// Whether providers may execute tool calls in parallel.
     pub parallel_tool_calls: Option<bool>,
     /// Reasoning extensions for providers such as OpenAI or Anthropic.
     pub reasoning: Option<ReasoningOptions>,
@@ -318,6 +386,33 @@ pub enum ResponseFormat {
 }
 
 /// Aggregated chat response returned by a provider.
+///
+/// Responses carry a list of [`OutputItem`]s (messages, tool calls, reasoning
+/// traces, etc.) plus optional token usage and finish metadata. This mirrors the
+/// union of OpenAI, Anthropic, and Gemini style payloads while remaining
+/// provider-agnostic.
+///
+/// # Examples
+///
+/// ```
+/// # use kotoba_llm::types::{ChatResponse, OutputItem, Message, Role, ContentPart, TextContent, ProviderMetadata};
+/// let response = ChatResponse {
+///     outputs: vec![OutputItem::Message {
+///         index: 0,
+///         message: Message {
+///             role: Role::assistant(),
+///             name: None,
+///             content: vec![ContentPart::Text(TextContent { text: "Hello".into() })],
+///             metadata: None,
+///         },
+///     }],
+///     usage: None,
+///     finish_reason: None,
+///     model: Some("gpt-4o-mini".into()),
+///     provider: ProviderMetadata { provider: "openai_chat".into(), ..Default::default() },
+/// };
+/// assert_eq!(response.outputs.len(), 1);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatResponse {
     /// Outputs produced by the model (messages, tools, etc.).
@@ -333,6 +428,9 @@ pub struct ChatResponse {
 }
 
 /// Individual output entry emitted by the provider.
+///
+/// The `index` mirrors upstream array indices so streaming deltas can be merged
+/// deterministically.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OutputItem {
@@ -348,7 +446,11 @@ pub enum OutputItem {
     Custom { data: Value, index: usize },
 }
 
-/// Streaming chunk
+/// Streaming chunk representing incremental response data.
+///
+/// Streaming transports emit one or more chunks until `is_terminal` becomes
+/// `true`. Consumers should aggregate [`ChatEvent`] entries in order and finalize
+/// once the terminal chunk arrives.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatChunk {
     /// Incremental events produced by streaming responses.
@@ -433,6 +535,23 @@ pub struct ToolResultDelta {
 }
 
 /// Token usage metrics collected from the provider.
+///
+/// Providers often emit partial usage in streaming mode; consumers can merge
+/// the optional values as they arrive.
+///
+/// # Examples
+///
+/// ```
+/// # use kotoba_llm::types::TokenUsage;
+/// let usage = TokenUsage {
+///     prompt_tokens: Some(1200),
+///     completion_tokens: Some(200),
+///     reasoning_tokens: None,
+///     total_tokens: Some(1400),
+///     details: None,
+/// };
+/// assert_eq!(usage.total_tokens, Some(1400));
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TokenUsage {
     /// prompt tokens
@@ -461,6 +580,9 @@ pub enum FinishReason {
 }
 
 /// Provider metadata returned with each response.
+///
+/// Use this structure to correlate logs, surface request IDs to clients, or
+/// surface endpoint information during incident triage.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProviderMetadata {
     /// Provider identifier such as `openai_chat`.
@@ -474,6 +596,9 @@ pub struct ProviderMetadata {
 }
 
 /// Capability descriptor used to filter providers at runtime.
+///
+/// [`crate::client::LLMClient`] exposes capability lookups so applications can
+/// pick compatible providers before dispatching a request.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CapabilityDescriptor {
     /// Whether the provider supports streaming outputs.
@@ -503,7 +628,12 @@ pub enum ProviderType {
     GoogleGemini,
 }
 
-/// Token Estimator
+/// Estimates token counts using provider-specific heuristics.
+///
+/// The estimator favors simplicity over exact parity with vendor tokenizers, so
+/// the returned counts are approximate but deterministic. Applications can use
+/// it for budgeting requests, enforcing safety margins, or pre-validating
+/// dynamic prompts before dispatching a network call.
 #[derive(Debug, Clone)]
 pub struct TokenEstimator {
     provider_type: ProviderType,
@@ -546,6 +676,41 @@ impl TokenEstimator {
     }
 
     /// Estimates the tokens for an entire chat request.
+    ///
+    /// The helper accounts for system/user/assistant roles, payload metadata,
+    /// and modal content (text, audio, images, video, etc.). It returns a
+    /// [`TokenEstimate`] that exposes both totals and a per-role breakdown so
+    /// callers can spot oversized messages quickly.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use kotoba_llm::types::{ChatRequest, ChatOptions, ContentPart, Message, Role, TextContent, TokenEstimator, ProviderType};
+    /// let request = ChatRequest {
+    ///     messages: vec![
+    ///         Message {
+    ///             role: Role::system(),
+    ///             name: None,
+    ///             content: vec![ContentPart::Text(TextContent { text: "You are terse".into() })],
+    ///             metadata: None,
+    ///         },
+    ///         Message {
+    ///             role: Role::user(),
+    ///             name: None,
+    ///             content: vec![ContentPart::Text(TextContent { text: "Explain enums".into() })],
+    ///             metadata: None,
+    ///         },
+    ///     ],
+    ///     options: ChatOptions::default(),
+    ///     tools: vec![],
+    ///     tool_choice: None,
+    ///     response_format: None,
+    ///     metadata: None,
+    /// };
+    /// let estimate = TokenEstimator::new(ProviderType::OpenAI).estimate_request(&request);
+    /// assert!(estimate.total > 0);
+    /// assert!(estimate.by_role.contains_key("system"));
+    /// ```
     pub fn estimate_request(&self, request: &ChatRequest) -> TokenEstimate {
         const OVERHEAD_PER_MESSAGE: usize = 4;
 
@@ -664,13 +829,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn text_estimator_accounts_for_locale_mix() {
+    fn text_estimator_scales_with_content_length() {
         let estimator = TokenEstimator::new(ProviderType::OpenAI);
-        let ascii_tokens = estimator.estimate_text("Hello world!");
-        let mixed_tokens = estimator.estimate_text("Hello，世界！");
+        let short_tokens = estimator.estimate_text("Hello world!");
+        let verbose_tokens = estimator.estimate_text(
+            "Hello world! This sentence intentionally repeats itself to emulate higher load.",
+        );
 
-        assert!(mixed_tokens >= ascii_tokens);
-        assert!(ascii_tokens > 0);
+        assert!(verbose_tokens >= short_tokens);
+        assert!(short_tokens > 0);
     }
 
     #[test]

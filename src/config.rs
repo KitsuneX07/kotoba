@@ -33,7 +33,28 @@ register_providers!(
     ),
 );
 
-/// Describes a provider handle that can be registered on an [`LLMClient`].
+/// Describes a provider handle that can be registered on an [`crate::client::LLMClient`].
+///
+/// The structure mirrors what you would typically load from `toml`, `yaml`, or JSON
+/// configuration before passing it to [`crate::config::build_client_from_configs`]. Every field maps
+/// cleanly to the ergonomic builder API so infrastructure code can remain declarative.
+///
+/// # Examples
+///
+/// ```
+/// # use std::collections::HashMap;
+/// # use kotoba_llm::config::{ModelConfig, ProviderKind, Credential};
+/// let cfg = ModelConfig {
+///     handle: "default-openai".into(),
+///     provider: ProviderKind::OpenAiChat,
+///     credential: Credential::ApiKey { header: None, key: "sk-test".into() },
+///     default_model: Some("gpt-4.1-mini".into()),
+///     base_url: Some("https://api.openai.com".into()),
+///     extra: HashMap::from([("service_tier".into(), serde_json::json!("default"))]),
+///     patch: None,
+/// };
+/// assert_eq!(cfg.handle, "default-openai");
+/// ```
 ///
 /// Each configuration declares the provider kind, credentials, optional defaults, and
 /// vendor-specific metadata.
@@ -48,7 +69,7 @@ pub struct ModelConfig {
     /// Extra provider-specific settings such as `service_tier` or `safetySettings`.
     #[serde(default)]
     pub extra: HashMap<String, Value>,
-    /// 运行时请求修改
+    /// Runtime request patch applied before dispatching the HTTP call.
     pub patch: Option<RequestPatch>,
 }
 
@@ -71,21 +92,46 @@ pub enum Credential {
     None,
 }
 
-/// 声明式请求补丁，可在运行时重写 URL、Headers 或 Body。
+/// Declarative patch that can rewrite the URL, headers, or body at runtime.
+///
+/// Typical use cases include injecting organization-wide headers, routing a
+/// provider through a proxy, or removing sensitive fields before logging. The
+/// patch operates on simple primitives so it can be stored in configuration
+/// files or feature flags.
+///
+/// # Examples
+///
+/// ```
+/// # use std::collections::HashMap;
+/// # use serde_json::json;
+/// # use kotoba_llm::config::RequestPatch;
+/// let patch = RequestPatch {
+///     url: Some("https://proxy.internal/chat".to_string()),
+///     body: Some(json!({ "metadata": { "tenant": "blue" } })),
+///     headers: Some(HashMap::from([
+///         ("x-trace".to_string(), Some("123".to_string())),
+///         ("x-remove".to_string(), None),
+///     ])),
+///     remove_fields: Some(vec!["options.max_tokens".to_string()]),
+/// };
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestPatch {
-    /// 覆盖请求 URL
+    /// Overwrites the request URL when provided.
     pub url: Option<String>,
-    /// 深度合并到请求 body
+    /// Deep-merges the JSON body with this fragment.
     pub body: Option<Value>,
-    /// None 表示删除 header，Some 则写入/覆盖
+    /// `None` removes a header, `Some` writes or replaces it.
     pub headers: Option<HashMap<String, Option<String>>>,
-    /// 按点分路径删除 body 中的字段（支持数组下标）
+    /// Removes JSON fields using dotted paths (array indices supported).
     pub remove_fields: Option<Vec<String>>,
 }
 
 impl RequestPatch {
     /// Applies the patch to the given request parts.
+    ///
+    /// The method mutates the URL, headers, and body in place, making it easy to
+    /// plug into middleware in front of any provider.
     pub fn apply(&self, url: &mut String, headers: &mut HashMap<String, String>, body: &mut Value) {
         if let Some(new_url) = &self.url {
             *url = new_url.clone();

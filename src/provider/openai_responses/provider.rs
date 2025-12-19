@@ -130,7 +130,7 @@ impl OpenAiResponsesProvider {
         self
     }
 
-    /// Constructs a provider from a [`ModelConfig`].
+    /// Constructs a provider from a [`crate::config::ModelConfig`].
     ///
     /// This method is used by the macro-driven provider registration system to build
     /// providers from declarative configuration.
