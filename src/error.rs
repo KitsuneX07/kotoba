@@ -121,6 +121,11 @@ impl LLMError {
             message: message.into(),
         }
     }
+
+    /// Returns  when the error indicates a transient condition worth retrying.
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, Self::RateLimit { .. } | Self::Transport { .. })
+    }
 }
 
 /// Returns `true` when an error code or message suggests a context/window overflow.

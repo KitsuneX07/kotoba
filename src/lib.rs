@@ -14,5 +14,5 @@ pub mod types;
 
 pub use client::{LLMClient, LLMClientLike};
 pub use error::LLMError;
-pub use provider::{ChatStream, LLMProvider};
+pub use provider::{ChatStream, LLMProvider, RetryConfig, RetryableLLMProvider};
 pub use types::*;
