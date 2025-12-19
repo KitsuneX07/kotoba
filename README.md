@@ -37,7 +37,7 @@
 
 ```toml
 [dependencies]
-kotoba-llm = "0.1.0"
+kotoba-llm = "0.2.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -66,13 +66,21 @@ async fn main() -> Result<(), LLMError> {
         .build();
 
     // 3. 构造通用请求
-    let request = ChatRequest::new(vec![
-        Message {
+    let request = ChatRequest {
+        messages: vec![Message {
             role: Role::user(),
-            content: vec![ContentPart::Text(TextContent::from("请用一句话介绍 Rust 语言"))],
-            ..Default::default()
-        }
-    ]);
+            name: None,
+            content: vec![ContentPart::Text(TextContent {
+                text: "请用一句话介绍 Rust 语言".into(),
+            })],
+            metadata: None,
+        }],
+        options: Default::default(),
+        tools: Vec::new(),
+        tool_choice: None,
+        response_format: None,
+        metadata: None,
+    };
 
     // 4. 执行流式请求
     let mut stream = client.stream_chat("openai", request).await?;
@@ -117,8 +125,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = build_client_from_configs(&configs, default_dyn_transport()?)?;
   
     // 检查能力并调用
-    if client.capabilities("gemini").supports_streaming {
-        let _ = client.chat("gemini", ChatRequest::from_user_text("Hello Gemini")).await?;
+    if client.capabilities("gemini").supports_stream {
+        let request = ChatRequest {
+            messages: vec![Message {
+                role: Role::user(),
+                name: None,
+                content: vec![ContentPart::Text(TextContent {
+                    text: "Hello Gemini".into(),
+                })],
+                metadata: None,
+            }],
+            options: Default::default(),
+            tools: Vec::new(),
+            tool_choice: None,
+            response_format: None,
+            metadata: None,
+        };
+        let _ = client.chat("gemini", request).await?;
     }
 
     Ok(())

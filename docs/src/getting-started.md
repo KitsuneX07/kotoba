@@ -6,7 +6,7 @@
 
 ```toml
 [dependencies]
-kotoba-llm = "0.1.0"
+kotoba-llm = "0.2.0"
 ```
 
 ## 2. 构造 `LLMClient`
