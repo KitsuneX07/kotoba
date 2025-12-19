@@ -9,8 +9,12 @@ use crate::types::{CapabilityDescriptor, ChatChunk, ChatRequest, ChatResponse};
 
 pub mod anthropic_messages;
 pub mod google_gemini;
+pub mod macros;
 pub mod openai_chat;
 pub mod openai_responses;
+pub(crate) mod retry;
+
+pub use retry::{RetryConfig, RetryableLLMProvider};
 
 /// Stream alias returned by provider implementations for incremental responses.
 pub type ChatStream = Pin<Box<dyn Stream<Item = Result<ChatChunk, LLMError>> + Send>>;

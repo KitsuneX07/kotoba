@@ -6,7 +6,7 @@
 
 ```toml
 [dependencies]
-kotoba-llm = "0.1.0"
+kotoba-llm = "0.2.0"
 ```
 
 ## 2. 构造 `LLMClient`
@@ -87,6 +87,7 @@ async fn main() -> Result<(), kotoba_llm::LLMError> {
             ("version".into(), serde_json::json!("2023-06-01")),
             ("beta".into(), serde_json::json!("client-tools"))
         ].into_iter().collect(),
+        patch: None,
     }];
 
     let transport = default_dyn_transport()?;

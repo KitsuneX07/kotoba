@@ -72,7 +72,12 @@ pub trait LLMProvider: Send + Sync {
 - 网络层：`Transport`；
 - 鉴权：`Auth`；
 - 速率限制：`RateLimit`（附带 `retry_after`）；
-- 请求校验：`Validation`；
+- Token/上下文溢出：`TokenLimitExceeded`（保留原始消息）；
+- 模型缺失或不可用：`ModelNotFound`；
+- 运行时请求校验：`Validation`；
+- 配置阶段错误：`InvalidConfig`；
+- 用户主动取消：`Aborted`；
+- SSE 早退：`StreamClosed`（含原始错误信息）；
 - 能力不支持：`UnsupportedFeature`；
 - 厂商返回：`Provider`；
 - 预留占位：`NotImplemented`、`Unknown`。

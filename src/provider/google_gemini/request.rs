@@ -54,7 +54,7 @@ pub(crate) fn build_gemini_body(
         );
     }
 
-    // 2. Sampling and generation configuration → `generationConfig`.
+    // 2. Sampling and generation configuration maps to `generationConfig`.
     if let Some(gen_cfg) = build_generation_config(request)? {
         body.insert("generationConfig".to_string(), gen_cfg);
     }

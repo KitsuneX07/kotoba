@@ -4,12 +4,13 @@ use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use crate::config::RequestPatch;
 use crate::error::LLMError;
 use crate::http::{
     DynHttpTransport, HttpResponse, HttpStreamResponse, post_json_stream_with_headers,
     post_json_with_headers,
 };
-use crate::provider::{ChatStream, LLMProvider};
+use crate::provider::{ChatStream, LLMProvider, retry::retry_after_from_headers};
 use crate::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
 
 use super::error::parse_openai_responses_error;
@@ -31,6 +32,7 @@ pub struct OpenAiResponsesProvider {
     pub(crate) organization: Option<String>,
     pub(crate) project: Option<String>,
     pub(crate) default_model: Option<String>,
+    pub(crate) request_patch: Option<RequestPatch>,
 }
 
 impl OpenAiResponsesProvider {
@@ -54,6 +56,7 @@ impl OpenAiResponsesProvider {
             organization: None,
             project: None,
             default_model: None,
+            request_patch: None,
         }
     }
 
@@ -127,6 +130,65 @@ impl OpenAiResponsesProvider {
         self
     }
 
+    /// Constructs a provider from a [`crate::config::ModelConfig`].
+    ///
+    /// This method is used by the macro-driven provider registration system to build
+    /// providers from declarative configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The model configuration containing credentials and settings
+    /// * `transport` - The HTTP transport implementation to use
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LLMError::Auth`] when credentials are missing or invalid.
+    pub fn from_model_config(
+        config: &crate::config::ModelConfig,
+        transport: DynHttpTransport,
+    ) -> Result<Self, LLMError> {
+        use crate::config::Credential;
+
+        let api_key = match &config.credential {
+            Credential::ApiKey { key, .. } => key.clone(),
+            Credential::Bearer { token } => token.clone(),
+            Credential::ServiceAccount { .. } => {
+                return Err(LLMError::Auth {
+                    message:
+                        "provider openai_responses does not support service account credential"
+                            .to_string(),
+                });
+            }
+            Credential::None => {
+                return Err(LLMError::Auth {
+                    message: "provider openai_responses requires credential".to_string(),
+                });
+            }
+        };
+
+        let mut provider = Self::new(transport, api_key);
+
+        if let Some(base_url) = &config.base_url {
+            provider = provider.with_base_url(base_url.clone());
+        }
+
+        if let Some(model) = &config.default_model {
+            provider = provider.with_default_model(model.clone());
+        }
+
+        if let Some(Value::String(org)) = config.extra.get("organization") {
+            provider = provider.with_organization(org.clone());
+        }
+
+        if let Some(Value::String(project)) = config.extra.get("project") {
+            provider = provider.with_project(project.clone());
+        }
+
+        provider.request_patch = config.patch.clone();
+
+        Ok(provider)
+    }
+
     pub(crate) fn endpoint(&self) -> String {
         let base = self.base_url.trim_end_matches('/');
         if base.ends_with("/v1") {
@@ -170,32 +232,36 @@ impl OpenAiResponsesProvider {
     }
 
     async fn send_request(&self, body: Value) -> Result<HttpResponse, LLMError> {
-        post_json_with_headers(
-            self.transport.as_ref(),
-            self.endpoint(),
-            self.build_headers(),
-            &body,
-        )
-        .await
+        let mut url = self.endpoint();
+        let mut headers = self.build_headers();
+        let mut body = body;
+        self.apply_patch(&mut url, &mut headers, &mut body);
+        post_json_with_headers(self.transport.as_ref(), url, headers, &body).await
     }
 
     async fn send_stream_request(&self, body: Value) -> Result<HttpStreamResponse, LLMError> {
-        post_json_stream_with_headers(
-            self.transport.as_ref(),
-            self.endpoint(),
-            self.build_headers(),
-            &body,
-        )
-        .await
+        let mut url = self.endpoint();
+        let mut headers = self.build_headers();
+        let mut body = body;
+        self.apply_patch(&mut url, &mut headers, &mut body);
+        post_json_stream_with_headers(self.transport.as_ref(), url, headers, &body).await
     }
 
     fn ensure_success(&self, response: HttpResponse) -> Result<String, LLMError> {
-        let status = response.status;
-        let text = response.into_string()?;
+        let HttpResponse {
+            status,
+            headers,
+            body,
+        } = response;
+        let text = String::from_utf8(body).map_err(|err| LLMError::transport(err.to_string()))?;
         if (200..300).contains(&status) {
             Ok(text)
         } else {
-            Err(parse_openai_responses_error(status, &text))
+            Err(parse_openai_responses_error(
+                status,
+                &text,
+                retry_after_from_headers(&headers),
+            ))
         }
     }
 
@@ -204,6 +270,17 @@ impl OpenAiResponsesProvider {
             provider: self.name(),
             message: format!("failed to parse OpenAI Responses response: {err}"),
         })
+    }
+
+    fn apply_patch(
+        &self,
+        url: &mut String,
+        headers: &mut HashMap<String, String>,
+        body: &mut Value,
+    ) {
+        if let Some(patch) = &self.request_patch {
+            patch.apply(url, headers, body);
+        }
     }
 }
 
@@ -220,11 +297,20 @@ impl LLMProvider for OpenAiResponsesProvider {
     async fn stream_chat(&self, request: ChatRequest) -> Result<ChatStream, LLMError> {
         let body = self.build_request_body(&request, true)?;
         let response = self.send_stream_request(body).await?;
-        if !(200..300).contains(&response.status) {
-            let text = collect_stream_text(response.body, self.name()).await?;
-            return Err(parse_openai_responses_error(response.status, &text));
+        let HttpStreamResponse {
+            status,
+            headers,
+            body,
+        } = response;
+        if !(200..300).contains(&status) {
+            let text = collect_stream_text(body, self.name()).await?;
+            return Err(parse_openai_responses_error(
+                status,
+                &text,
+                retry_after_from_headers(&headers),
+            ));
         }
-        Ok(create_stream(response.body, self.name(), self.endpoint()))
+        Ok(create_stream(body, self.name(), self.endpoint()))
     }
 
     fn capabilities(&self) -> CapabilityDescriptor {

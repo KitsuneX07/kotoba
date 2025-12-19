@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -7,13 +6,55 @@ use serde_json::Value;
 use crate::client::LLMClient;
 use crate::error::LLMError;
 use crate::http::DynHttpTransport;
-use crate::provider::DynProvider;
-use crate::provider::anthropic_messages::AnthropicMessagesProvider;
-use crate::provider::google_gemini::GoogleGeminiProvider;
-use crate::provider::openai_chat::OpenAiChatProvider;
-use crate::provider::openai_responses::OpenAiResponsesProvider;
 
-/// Describes a provider handle that can be registered on an [`LLMClient`].
+// Import the macro to register providers
+use crate::register_providers;
+
+// Register all providers using the macro
+register_providers!(
+    (openai_chat, "openai_chat", OpenAiChatProvider, OpenAiChat),
+    (
+        openai_responses,
+        "openai_responses",
+        OpenAiResponsesProvider,
+        OpenAiResponses
+    ),
+    (
+        anthropic_messages,
+        "anthropic_messages",
+        AnthropicMessagesProvider,
+        AnthropicMessages
+    ),
+    (
+        google_gemini,
+        "google_gemini",
+        GoogleGeminiProvider,
+        GoogleGemini
+    ),
+);
+
+/// Describes a provider handle that can be registered on an [`crate::client::LLMClient`].
+///
+/// The structure mirrors what you would typically load from `toml`, `yaml`, or JSON
+/// configuration before passing it to [`crate::config::build_client_from_configs`]. Every field maps
+/// cleanly to the ergonomic builder API so infrastructure code can remain declarative.
+///
+/// # Examples
+///
+/// ```
+/// # use std::collections::HashMap;
+/// # use kotoba_llm::config::{ModelConfig, ProviderKind, Credential};
+/// let cfg = ModelConfig {
+///     handle: "default-openai".into(),
+///     provider: ProviderKind::OpenAiChat,
+///     credential: Credential::ApiKey { header: None, key: "sk-test".into() },
+///     default_model: Some("gpt-4.1-mini".into()),
+///     base_url: Some("https://api.openai.com".into()),
+///     extra: HashMap::from([("service_tier".into(), serde_json::json!("default"))]),
+///     patch: None,
+/// };
+/// assert_eq!(cfg.handle, "default-openai");
+/// ```
 ///
 /// Each configuration declares the provider kind, credentials, optional defaults, and
 /// vendor-specific metadata.
@@ -28,16 +69,8 @@ pub struct ModelConfig {
     /// Extra provider-specific settings such as `service_tier` or `safetySettings`.
     #[serde(default)]
     pub extra: HashMap<String, Value>,
-}
-
-/// Enumerates the provider kinds supported by the configuration loader.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProviderKind {
-    OpenAiChat,
-    OpenAiResponses,
-    AnthropicMessages,
-    GoogleGemini,
+    /// Runtime request patch applied before dispatching the HTTP call.
+    pub patch: Option<RequestPatch>,
 }
 
 /// Credential variants understood by the configuration loader.
@@ -57,6 +90,137 @@ pub enum Credential {
     ServiceAccount { json: Value },
     /// Dummy variant for providers that do not require credentials.
     None,
+}
+
+/// Declarative patch that can rewrite the URL, headers, or body at runtime.
+///
+/// Typical use cases include injecting organization-wide headers, routing a
+/// provider through a proxy, or removing sensitive fields before logging. The
+/// patch operates on simple primitives so it can be stored in configuration
+/// files or feature flags.
+///
+/// # Examples
+///
+/// ```
+/// # use std::collections::HashMap;
+/// # use serde_json::json;
+/// # use kotoba_llm::config::RequestPatch;
+/// let patch = RequestPatch {
+///     url: Some("https://proxy.internal/chat".to_string()),
+///     body: Some(json!({ "metadata": { "tenant": "blue" } })),
+///     headers: Some(HashMap::from([
+///         ("x-trace".to_string(), Some("123".to_string())),
+///         ("x-remove".to_string(), None),
+///     ])),
+///     remove_fields: Some(vec!["options.max_tokens".to_string()]),
+/// };
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestPatch {
+    /// Overwrites the request URL when provided.
+    pub url: Option<String>,
+    /// Deep-merges the JSON body with this fragment.
+    pub body: Option<Value>,
+    /// `None` removes a header, `Some` writes or replaces it.
+    pub headers: Option<HashMap<String, Option<String>>>,
+    /// Removes JSON fields using dotted paths (array indices supported).
+    pub remove_fields: Option<Vec<String>>,
+}
+
+impl RequestPatch {
+    /// Applies the patch to the given request parts.
+    ///
+    /// The method mutates the URL, headers, and body in place, making it easy to
+    /// plug into middleware in front of any provider.
+    pub fn apply(&self, url: &mut String, headers: &mut HashMap<String, String>, body: &mut Value) {
+        if let Some(new_url) = &self.url {
+            *url = new_url.clone();
+        }
+
+        if let Some(patch_body) = &self.body {
+            merge_json(body, patch_body);
+        }
+
+        if let Some(header_patch) = &self.headers {
+            for (key, value) in header_patch {
+                match value {
+                    Some(v) => {
+                        headers.insert(key.clone(), v.clone());
+                    }
+                    None => {
+                        headers.remove(key);
+                    }
+                }
+            }
+        }
+
+        if let Some(paths) = &self.remove_fields {
+            for path in paths {
+                remove_json_field(body, path);
+            }
+        }
+    }
+}
+
+fn merge_json(target: &mut Value, patch: &Value) {
+    match patch {
+        Value::Object(patch_map) => {
+            if let Value::Object(target_map) = target {
+                for (key, patch_value) in patch_map {
+                    match target_map.get_mut(key) {
+                        Some(existing) => merge_json(existing, patch_value),
+                        None => {
+                            target_map.insert(key.clone(), patch_value.clone());
+                        }
+                    }
+                }
+            } else {
+                *target = patch.clone();
+            }
+        }
+        _ => {
+            *target = patch.clone();
+        }
+    }
+}
+
+fn remove_json_field(value: &mut Value, path: &str) {
+    let segments: Vec<&str> = path
+        .split('.')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    if segments.is_empty() {
+        return;
+    }
+    remove_json_field_inner(value, &segments);
+}
+
+fn remove_json_field_inner(value: &mut Value, segments: &[&str]) {
+    if segments.is_empty() {
+        return;
+    }
+
+    match value {
+        Value::Object(map) => {
+            if segments.len() == 1 {
+                map.remove(segments[0]);
+            } else if let Some(next) = map.get_mut(segments[0]) {
+                remove_json_field_inner(next, &segments[1..]);
+            }
+        }
+        Value::Array(array) => {
+            if let Ok(index) = segments[0].parse::<usize>() {
+                if index < array.len() {
+                    if segments.len() == 1 {
+                        array.remove(index);
+                    } else {
+                        remove_json_field_inner(&mut array[index], &segments[1..]);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Builds an [`LLMClient`] from the provided model configurations.
@@ -79,6 +243,7 @@ pub enum Credential {
 ///     default_model: Some("gpt-4.1-mini".into()),
 ///     base_url: None,
 ///     extra: HashMap::new(),
+///     patch: None,
 /// }];
 /// let transport = default_dyn_transport().expect("transport");
 /// let client = build_client_from_configs(&configs, transport).expect("client");
@@ -87,7 +252,7 @@ pub enum Credential {
 ///
 /// # Errors
 ///
-/// Returns [`LLMError::Auth`] when credentials are invalid or missing, [`LLMError::Validation`]
+/// Returns [`LLMError::Auth`] when credentials are invalid or missing, [`LLMError::InvalidConfig`]
 /// when duplicate handles are present, or any provider-specific error raised while
 /// constructing provider instances.
 pub fn build_client_from_configs(
@@ -104,106 +269,11 @@ pub fn build_client_from_configs(
     Ok(builder.build())
 }
 
-fn build_provider_from_config(
-    config: &ModelConfig,
-    transport: DynHttpTransport,
-) -> Result<DynProvider, LLMError> {
-    let provider: DynProvider = match config.provider {
-        ProviderKind::OpenAiChat => {
-            let api_key = extract_api_key(&config.credential, "openai_chat")?;
-            let mut provider = OpenAiChatProvider::new(transport, api_key);
-
-            if let Some(base_url) = &config.base_url {
-                provider = provider.with_base_url(base_url.clone());
-            }
-            if let Some(model) = &config.default_model {
-                provider = provider.with_default_model(model.clone());
-            }
-
-            if let Some(Value::String(org)) = config.extra.get("organization") {
-                provider = provider.with_organization(org.clone());
-            }
-            if let Some(Value::String(project)) = config.extra.get("project") {
-                provider = provider.with_project(project.clone());
-            }
-
-            Arc::new(provider)
-        }
-        ProviderKind::OpenAiResponses => {
-            let api_key = extract_api_key(&config.credential, "openai_responses")?;
-            let mut provider = OpenAiResponsesProvider::new(transport, api_key);
-
-            if let Some(base_url) = &config.base_url {
-                provider = provider.with_base_url(base_url.clone());
-            }
-            if let Some(model) = &config.default_model {
-                provider = provider.with_default_model(model.clone());
-            }
-
-            if let Some(Value::String(org)) = config.extra.get("organization") {
-                provider = provider.with_organization(org.clone());
-            }
-            if let Some(Value::String(project)) = config.extra.get("project") {
-                provider = provider.with_project(project.clone());
-            }
-
-            Arc::new(provider)
-        }
-        ProviderKind::AnthropicMessages => {
-            let api_key = extract_api_key(&config.credential, "anthropic_messages")?;
-            let mut provider = AnthropicMessagesProvider::new(transport, api_key);
-
-            if let Some(base_url) = &config.base_url {
-                provider = provider.with_base_url(base_url.clone());
-            }
-            if let Some(model) = &config.default_model {
-                provider = provider.with_default_model(model.clone());
-            }
-
-            if let Some(Value::String(version)) = config.extra.get("version") {
-                provider = provider.with_version(version.clone());
-            }
-            if let Some(Value::String(beta)) = config.extra.get("beta") {
-                provider = provider.with_beta(beta.clone());
-            }
-
-            Arc::new(provider)
-        }
-        ProviderKind::GoogleGemini => {
-            let api_key = extract_api_key(&config.credential, "google_gemini")?;
-            let mut provider = GoogleGeminiProvider::new(transport, api_key);
-
-            if let Some(base_url) = &config.base_url {
-                provider = provider.with_base_url(base_url.clone());
-            }
-            if let Some(model) = &config.default_model {
-                provider = provider.with_default_model(model.clone());
-            }
-
-            Arc::new(provider)
-        }
-    };
-
-    Ok(provider)
-}
-
-fn extract_api_key(credential: &Credential, provider: &'static str) -> Result<String, LLMError> {
-    match credential {
-        Credential::ApiKey { key, .. } => Ok(key.clone()),
-        Credential::Bearer { token } => Ok(token.clone()),
-        Credential::ServiceAccount { .. } => Err(LLMError::Auth {
-            message: format!("provider {provider} does not support service account credential"),
-        }),
-        Credential::None => Err(LLMError::Auth {
-            message: format!("provider {provider} requires credential"),
-        }),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::http::reqwest::default_dyn_transport;
+    use serde_json::json;
 
     /// Ensures every [`ProviderKind`] variant can be registered on [`LLMClient`].
     #[test]
@@ -221,6 +291,7 @@ mod tests {
                 default_model: Some("gpt-4.1-mini".to_string()),
                 base_url: None,
                 extra: HashMap::new(),
+                patch: None,
             },
             ModelConfig {
                 handle: "openai-responses".to_string(),
@@ -232,6 +303,7 @@ mod tests {
                 default_model: Some("gpt-4.1-mini".to_string()),
                 base_url: None,
                 extra: HashMap::new(),
+                patch: None,
             },
             ModelConfig {
                 handle: "anthropic-messages".to_string(),
@@ -243,6 +315,7 @@ mod tests {
                 default_model: Some("claude-3-5-sonnet".to_string()),
                 base_url: None,
                 extra: HashMap::new(),
+                patch: None,
             },
             ModelConfig {
                 handle: "gemini-generate".to_string(),
@@ -254,6 +327,7 @@ mod tests {
                 default_model: Some("gemini-2.0-flash".to_string()),
                 base_url: None,
                 extra: HashMap::new(),
+                patch: None,
             },
         ];
 
@@ -287,6 +361,7 @@ mod tests {
                 default_model: Some("gpt-4.1-mini".to_string()),
                 base_url: None,
                 extra: HashMap::new(),
+                patch: None,
             },
             ModelConfig {
                 handle: "gemini-default".to_string(),
@@ -298,6 +373,7 @@ mod tests {
                 default_model: Some("gemini-2.0-flash".to_string()),
                 base_url: None,
                 extra: HashMap::new(),
+                patch: None,
             },
         ];
 
@@ -322,6 +398,7 @@ mod tests {
             default_model: None,
             base_url: None,
             extra: HashMap::new(),
+            patch: None,
         }];
 
         let result = build_client_from_configs(&configs, transport);
@@ -354,6 +431,7 @@ mod tests {
             default_model: Some("gemini-2.0-flash".to_string()),
             base_url: None,
             extra: HashMap::new(),
+            patch: None,
         }];
 
         let result = build_client_from_configs(&configs, transport);
@@ -387,6 +465,7 @@ mod tests {
             default_model: Some("gpt-4.1-mini".to_string()),
             base_url: None,
             extra: HashMap::new(),
+            patch: None,
         }];
 
         let result = build_client_from_configs(&configs, transport);
@@ -410,6 +489,7 @@ mod tests {
             default_model: Some("gpt-4.1-mini".to_string()),
             base_url: None,
             extra: HashMap::new(),
+            patch: None,
         };
 
         let cfg2 = ModelConfig {
@@ -422,6 +502,7 @@ mod tests {
             default_model: Some("gemini-2.0-flash".to_string()),
             base_url: None,
             extra: HashMap::new(),
+            patch: None,
         };
 
         let configs = vec![cfg1, cfg2];
@@ -432,13 +513,76 @@ mod tests {
         };
 
         match err {
-            LLMError::Validation { message } => {
+            LLMError::InvalidConfig { field, reason } => {
+                assert_eq!(field, "handle");
                 assert!(
-                    message.contains("duplicate model handle: dup-handle"),
-                    "unexpected validation message for duplicate handle in configs: {message}"
+                    reason.contains("duplicate model handle: dup-handle"),
+                    "unexpected invalid-config reason for duplicate handle: {reason}"
                 );
             }
             other => panic!("unexpected error type for duplicate handle in configs: {other:?}"),
         }
+    }
+
+    #[test]
+    fn request_patch_merges_and_removes_fields() {
+        let patch = RequestPatch {
+            url: Some("https://override.local/chat".to_string()),
+            body: Some(json!({
+                "metadata": { "trace": false },
+                "extra": { "temperature": 0.2 }
+            })),
+            headers: Some(HashMap::from([
+                ("X-Debug".to_string(), None),
+                ("X-Injected".to_string(), Some("1".to_string())),
+            ])),
+            remove_fields: Some(vec![
+                "metadata.remove_me".to_string(),
+                "messages.0.drop".to_string(),
+            ]),
+        };
+
+        let mut url = "https://api.example.com/v1/chat".to_string();
+        let mut headers = HashMap::from([
+            ("Authorization".to_string(), "Bearer test".to_string()),
+            ("X-Debug".to_string(), "true".to_string()),
+        ]);
+        let mut body = json!({
+            "metadata": { "trace": true, "remove_me": "temp" },
+            "messages": [{ "role": "user", "drop": "yes" }],
+        });
+
+        patch.apply(&mut url, &mut headers, &mut body);
+
+        assert_eq!(url, "https://override.local/chat");
+        assert!(!headers.contains_key("X-Debug"));
+        assert_eq!(headers.get("X-Injected"), Some(&"1".to_string()));
+        assert_eq!(
+            headers.get("Authorization"),
+            Some(&"Bearer test".to_string())
+        );
+        assert_eq!(body["metadata"]["trace"], json!(false));
+        assert!(body["metadata"].get("remove_me").is_none());
+        assert!(body["messages"][0].get("drop").is_none());
+        assert_eq!(body["extra"]["temperature"], json!(0.2));
+    }
+
+    #[test]
+    fn request_patch_replaces_scalar_body() {
+        let patch = RequestPatch {
+            url: None,
+            body: Some(json!({ "structured": true })),
+            headers: None,
+            remove_fields: None,
+        };
+
+        let mut url = "https://example.com".to_string();
+        let mut headers = HashMap::new();
+        let mut body = json!("raw text body");
+
+        patch.apply(&mut url, &mut headers, &mut body);
+        assert_eq!(body, json!({ "structured": true }));
+        assert!(headers.is_empty());
+        assert_eq!(url, "https://example.com");
     }
 }

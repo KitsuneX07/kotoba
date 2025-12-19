@@ -412,7 +412,7 @@ mod tests {
     /// Maps multimodal content (images, audio, video, files, and custom data).
     #[test]
     fn convert_various_content_parts() {
-        let parts = vec![
+        let parts = [
             ContentPart::Image(ImageContent {
                 source: ImageSource::Url {
                     url: "https://example.com/image.png".to_string(),

@@ -86,7 +86,7 @@ pub(crate) fn build_openai_responses_body(
         }
     }
 
-    // Response format → `text.format`.
+    // Response format maps to `text.format`.
     if let Some(format) = &request.response_format {
         // If callers already set `text` via `extra`, honor that configuration first.
         if !body.contains_key("text") {

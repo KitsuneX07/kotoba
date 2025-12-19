@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 
 use crate::error::LLMError;
-use crate::provider::{ChatStream, DynProvider};
+use crate::provider::{ChatStream, DynProvider, RetryConfig, RetryableLLMProvider};
 use crate::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
 
 /// Routes chat requests through the set of registered providers.
@@ -111,6 +111,74 @@ impl LLMClient {
     pub async fn chat(&self, handle: &str, request: ChatRequest) -> Result<ChatResponse, LLMError> {
         let provider = self.get_provider(handle)?;
         provider.chat(request).await
+    }
+
+    /// Retries [`LLMClient::chat`] when providers return retryable errors.
+    ///
+    /// This helper automatically applies exponential backoff driven by [`RetryConfig`]
+    /// and respects provider-supplied `retry_after` hints whenever they are available.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use async_trait::async_trait;
+    /// # use kotoba_llm::client::LLMClient;
+    /// # use kotoba_llm::error::LLMError;
+    /// # use kotoba_llm::provider::{LLMProvider, ChatStream, RetryConfig};
+    /// # use kotoba_llm::types::{CapabilityDescriptor, ChatRequest, ChatResponse};
+    /// # use futures_util::stream;
+    /// # struct FlakyProvider { attempts: std::sync::atomic::AtomicUsize }
+    /// # #[async_trait]
+    /// # impl LLMProvider for FlakyProvider {
+    /// #     async fn chat(&self, _request: ChatRequest) -> Result<ChatResponse, LLMError> {
+    /// #         use std::sync::atomic::{AtomicUsize, Ordering};
+    /// #         let count = self.attempts.fetch_add(1, Ordering::SeqCst);
+    /// #         if count == 0 {
+    /// #             return Err(LLMError::Transport { message: "flaky".into() });
+    /// #         }
+    /// #         Ok(ChatResponse {
+    /// #             outputs: Vec::new(),
+    /// #             usage: None,
+    /// #             finish_reason: None,
+    /// #             model: None,
+    /// #             provider: Default::default(),
+    /// #         })
+    /// #     }
+    /// #     async fn stream_chat(&self, _request: ChatRequest) -> Result<ChatStream, LLMError> { Ok(Box::pin(stream::empty())) }
+    /// #     fn capabilities(&self) -> CapabilityDescriptor { CapabilityDescriptor::default() }
+    /// #     fn name(&self) -> &'static str { "flaky" }
+    /// # }
+    /// # fn build_client() -> LLMClient {
+    /// #     LLMClient::builder()
+    /// #         .register_handle("flaky", Arc::new(FlakyProvider { attempts: std::sync::atomic::AtomicUsize::new(0) }))
+    /// #         .expect("unique handle")
+    /// #         .build()
+    /// # }
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let client = build_client();
+    /// let config = RetryConfig { max_retries: 1, initial_backoff_ms: 0, max_backoff_ms: 0, backoff_multiplier: 2.0 };
+    /// let response = client
+    ///     .chat_with_retry("flaky", ChatRequest {
+    ///         messages: Vec::new(),
+    ///         options: Default::default(),
+    ///         tools: Vec::new(),
+    ///         tool_choice: None,
+    ///         response_format: None,
+    ///         metadata: None,
+    ///     }, config)
+    ///     .await;
+    /// assert!(response.is_ok());
+    /// # });
+    /// ```
+    pub async fn chat_with_retry(
+        &self,
+        handle: &str,
+        request: ChatRequest,
+        config: RetryConfig,
+    ) -> Result<ChatResponse, LLMError> {
+        let provider = self.get_provider(handle)?;
+        provider.chat_with_retry(request, config).await
     }
 
     /// Initiates a streaming chat request.
@@ -522,7 +590,7 @@ impl LLMClientBuilder {
     ///
     /// # Errors
     ///
-    /// Returns [`LLMError::Validation`] if the provided handle already exists.
+    /// Returns [`LLMError::InvalidConfig`] if the provided handle already exists.
     pub fn register_handle<S: Into<String>>(
         mut self,
         handle: S,
@@ -530,8 +598,9 @@ impl LLMClientBuilder {
     ) -> Result<Self, LLMError> {
         let handle = handle.into();
         if self.providers.contains_key(&handle) {
-            return Err(LLMError::Validation {
-                message: format!("duplicate model handle: {handle}"),
+            return Err(LLMError::InvalidConfig {
+                field: "handle".to_string(),
+                reason: format!("duplicate model handle: {handle}"),
             });
         }
         self.providers.insert(handle, provider);
@@ -577,8 +646,10 @@ impl LLMClientBuilder {
 mod tests {
     use super::*;
     use crate::provider::LLMProvider;
-    use crate::types::{ChatRequest, ChatResponse};
+    use crate::types::{ChatRequest, ChatResponse, ProviderMetadata};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
 
     /// Simple test provider that only exposes capability metadata.
     struct DummyProvider {
@@ -760,10 +831,11 @@ mod tests {
         };
 
         match err {
-            LLMError::Validation { message } => {
+            LLMError::InvalidConfig { field, reason } => {
+                assert_eq!(field, "handle");
                 assert!(
-                    message.contains("duplicate model handle: duplicate"),
-                    "unexpected validation message for duplicate handle: {message}"
+                    reason.contains("duplicate model handle: duplicate"),
+                    "unexpected invalid config reason: {reason}"
                 );
             }
             other => panic!("unexpected error type for duplicate handle: {other:?}"),
@@ -806,5 +878,84 @@ mod tests {
             }
             other => panic!("unexpected error type from llmclientlike chat: {other:?}"),
         }
+    }
+
+    struct RetryProvider {
+        attempts: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl LLMProvider for RetryProvider {
+        async fn chat(&self, _request: ChatRequest) -> Result<ChatResponse, LLMError> {
+            let count = self.attempts.fetch_add(1, Ordering::SeqCst);
+            if count == 0 {
+                return Err(LLMError::RateLimit {
+                    message: "throttled".to_string(),
+                    retry_after: Some(Duration::from_millis(0)),
+                });
+            }
+            Ok(ChatResponse {
+                outputs: Vec::new(),
+                usage: None,
+                finish_reason: None,
+                model: Some("mock".to_string()),
+                provider: ProviderMetadata {
+                    provider: "retry".to_string(),
+                    ..Default::default()
+                },
+            })
+        }
+
+        async fn stream_chat(&self, _request: ChatRequest) -> Result<ChatStream, LLMError> {
+            Err(LLMError::NotImplemented { feature: "stream" })
+        }
+
+        fn capabilities(&self) -> CapabilityDescriptor {
+            CapabilityDescriptor::default()
+        }
+
+        fn name(&self) -> &'static str {
+            "retry_provider"
+        }
+    }
+
+    fn empty_request() -> ChatRequest {
+        ChatRequest {
+            messages: Vec::new(),
+            options: Default::default(),
+            tools: Vec::new(),
+            tool_choice: None,
+            response_format: None,
+            metadata: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn chat_with_retry_retries_transient_failures() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let provider = Arc::new(RetryProvider {
+            attempts: attempts.clone(),
+        }) as DynProvider;
+
+        let client = LLMClient {
+            providers: HashMap::from([("retry".to_string(), provider)]),
+        };
+
+        let response = client
+            .chat_with_retry(
+                "retry",
+                empty_request(),
+                RetryConfig {
+                    max_retries: 1,
+                    initial_backoff_ms: 0,
+                    max_backoff_ms: 0,
+                    backoff_multiplier: 2.0,
+                },
+            )
+            .await
+            .expect("should retry once and succeed");
+
+        assert_eq!(response.model.as_deref(), Some("mock"));
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
     }
 }

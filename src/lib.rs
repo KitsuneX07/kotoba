@@ -9,9 +9,10 @@ pub mod config;
 pub mod error;
 pub mod http;
 pub mod provider;
+pub mod stream;
 pub mod types;
 
 pub use client::{LLMClient, LLMClientLike};
 pub use error::LLMError;
-pub use provider::{ChatStream, LLMProvider};
+pub use provider::{ChatStream, LLMProvider, RetryConfig, RetryableLLMProvider};
 pub use types::*;

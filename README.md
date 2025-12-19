@@ -29,7 +29,7 @@
   支持从配置文件批量构建客户端。自动处理 API Key 映射（Bearer/x-api-key）、Base URL 覆写及厂商特有参数注入。
 
 - **完备的错误处理 (Robust Error Handling)**
-  细粒度的 `LLMError` 枚举，精确区分网络传输、鉴权失败、速率限制 (Rate Limit) 与模型能力缺失等场景。
+  细粒度的 `LLMError` 枚举：除 `Transport`、`Auth`、`Validation` 外，还涵盖 `TokenLimitExceeded`、`ModelNotFound`、`InvalidConfig`、`StreamClosed` 等场景，保留供应商原始消息便于精准重试与定位。
 
 ## 安装
 
@@ -37,7 +37,7 @@
 
 ```toml
 [dependencies]
-kotoba-llm = "0.1.0"
+kotoba-llm = "0.2.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -66,13 +66,21 @@ async fn main() -> Result<(), LLMError> {
         .build();
 
     // 3. 构造通用请求
-    let request = ChatRequest::new(vec![
-        Message {
+    let request = ChatRequest {
+        messages: vec![Message {
             role: Role::user(),
-            content: vec![ContentPart::Text(TextContent::from("请用一句话介绍 Rust 语言"))],
-            ..Default::default()
-        }
-    ]);
+            name: None,
+            content: vec![ContentPart::Text(TextContent {
+                text: "请用一句话介绍 Rust 语言".into(),
+            })],
+            metadata: None,
+        }],
+        options: Default::default(),
+        tools: Vec::new(),
+        tool_choice: None,
+        response_format: None,
+        metadata: None,
+    };
 
     // 4. 执行流式请求
     let mut stream = client.stream_chat("openai", request).await?;
@@ -110,14 +118,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         default_model: Some("gemini-2.0-flash".into()),
         base_url: None,
         extra: Default::default(),
+        patch: None,
     }];
 
     // 一次性构建包含所有 Provider 的客户端
     let client = build_client_from_configs(&configs, default_dyn_transport()?)?;
   
     // 检查能力并调用
-    if client.capabilities("gemini").supports_streaming {
-        let _ = client.chat("gemini", ChatRequest::from_user_text("Hello Gemini")).await?;
+    if client.capabilities("gemini").supports_stream {
+        let request = ChatRequest {
+            messages: vec![Message {
+                role: Role::user(),
+                name: None,
+                content: vec![ContentPart::Text(TextContent {
+                    text: "Hello Gemini".into(),
+                })],
+                metadata: None,
+            }],
+            options: Default::default(),
+            tools: Vec::new(),
+            tool_choice: None,
+            response_format: None,
+            metadata: None,
+        };
+        let _ = client.chat("gemini", request).await?;
     }
 
     Ok(())
